@@ -12,7 +12,7 @@ namespace Azure.Messaging.EventHubs.Samples
 {
     public class Program
     {
-       public async static Task Main(string[] args)
+        public async static Task Main(string[] args)
         {
             int durationInHours = 72;
 
@@ -74,6 +74,7 @@ namespace Azure.Messaging.EventHubs.Samples
             LastReceivedSequenceNumber = new ConcurrentDictionary<string, long>();
 
             using (var streamWriter = File.CreateText(LogPath))
+            {
                 Log = TextWriter.Synchronized(streamWriter);
 
                 Task sendTask;
@@ -166,48 +167,47 @@ namespace Azure.Messaging.EventHubs.Samples
                 await Task.WhenAll(reportTasks);
 
                 Console.WriteLine($"Log output can be found at '{ LogPath }'.");
+            }
         }
 
         private async Task BackgroundSend(EventHubProducerClient producer, CancellationToken cancellationToken)
         {
-            //await using (var producer = client.CreateProducer())
-            //{
-                int batchSize, delayInSec;
-                string key;
-                EventData eventData;
-                EventDataBatch batch;
+            int batchSize, delayInSec;
+            string key;
+            EventData eventData;
+            EventDataBatch batch;
 
-                while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                batch = await producer.CreateBatchAsync();
+
+                batchSize = RandomNumberGenerator.Next(20, 100);
+
+                for (int i = 0; i < batchSize; i++)
                 {
-                    batch = await producer.CreateBatchAsync();
+                    key = Guid.NewGuid().ToString();
 
-                    batchSize = RandomNumberGenerator.Next(20, 100);
+                    eventData = new EventData(Encoding.UTF8.GetBytes(key));
 
-                    for (int i = 0; i < batchSize; i++)
-                    {
-                        key = Guid.NewGuid().ToString();
+                    eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
+                    eventData.Properties["BatchIndex"] = batchesCount;
+                    eventData.Properties["BatchSize"] = batchSize;
+                    eventData.Properties["Index"] = i;
 
-                        eventData = new EventData(Encoding.UTF8.GetBytes(key));
+                    MissingEvents[key] = eventData;
 
-                        eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
-                        eventData.Properties["BatchIndex"] = batchesCount;
-                        eventData.Properties["BatchSize"] = batchSize;
-                        eventData.Properties["Index"] = i;
-
-                        MissingEvents[key] = eventData;
-
-                        batch.TryAdd(eventData);
-                    }
-
-                    await producer.SendAsync(batch);
-
-                    batchesCount++;
-                    sentEventsCount += batchSize;
-
-                    delayInSec = RandomNumberGenerator.Next(1, 10);
-
-                    await Task.Delay(TimeSpan.FromSeconds(delayInSec));
+                    batch.TryAdd(eventData);
                 }
+
+                await producer.SendAsync(batch);
+
+                batchesCount++;
+                sentEventsCount += batchSize;
+
+                delayInSec = RandomNumberGenerator.Next(1, 10);
+
+                await Task.Delay(TimeSpan.FromSeconds(delayInSec));
+            }
         }
 
         private async Task BackgroundReceive(string connectionString, string eventHubName, string partitionId, CancellationToken cancellationToken)
