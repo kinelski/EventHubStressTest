@@ -74,8 +74,6 @@ namespace Azure.Messaging.EventHubs.Samples
             LastReceivedSequenceNumber = new ConcurrentDictionary<string, long>();
 
             using (var streamWriter = File.CreateText(LogPath))
-            await using (var client = new EventHubClient(connectionString, eventHubName))
-            {
                 Log = TextWriter.Synchronized(streamWriter);
 
                 Task sendTask;
@@ -84,10 +82,11 @@ namespace Azure.Messaging.EventHubs.Samples
 
                 CancellationToken timeoutToken = (new CancellationTokenSource(duration)).Token;
                 Exception capturedException;
+                var producerClient = new EventHubProducerClient(connectionString, eventHubName);
 
-                foreach (var partitionId in await client.GetPartitionIdsAsync())
+                foreach (var partitionId in await producerClient.GetPartitionIdsAsync())
                 {
-                    receiveTasks[partitionId] = BackgroundReceive(client, partitionId, timeoutToken);
+                    receiveTasks[partitionId] = BackgroundReceive(connectionString, eventHubName, partitionId, timeoutToken);
                     Interlocked.Increment(ref consumersToConnect);
                 }
 
@@ -96,7 +95,7 @@ namespace Azure.Messaging.EventHubs.Samples
                     await Task.Delay(TimeSpan.FromMilliseconds(200));
                 }
 
-                sendTask = BackgroundSend(client, timeoutToken);
+                sendTask = BackgroundSend(producerClient, timeoutToken);
 
                 Console.WriteLine($"Starting a { duration.ToString(@"dd\.hh\:mm\:ss") } run.\n");
                 Console.WriteLine($"Log output can be found at '{ LogPath }'.\n");
@@ -120,7 +119,7 @@ namespace Azure.Messaging.EventHubs.Samples
                         }
 
                         reportTasks.Add(ReportProducerFailure(capturedException));
-                        sendTask = BackgroundSend(client, timeoutToken);
+                        sendTask = BackgroundSend(producerClient, timeoutToken);
                     }
 
                     foreach (var kvp in receiveTasks)
@@ -141,7 +140,7 @@ namespace Azure.Messaging.EventHubs.Samples
                             }
 
                             reportTasks.Add(ReportConsumerFailure(kvp.Key, capturedException));
-                            receiveTasks[kvp.Key] = BackgroundReceive(client, kvp.Key, timeoutToken);
+                            receiveTasks[kvp.Key] = BackgroundReceive(connectionString, eventHubName, kvp.Key, timeoutToken);
                         }
                     }
 
@@ -167,13 +166,12 @@ namespace Azure.Messaging.EventHubs.Samples
                 await Task.WhenAll(reportTasks);
 
                 Console.WriteLine($"Log output can be found at '{ LogPath }'.");
-            }
         }
 
-        private async Task BackgroundSend(EventHubClient client, CancellationToken cancellationToken)
+        private async Task BackgroundSend(EventHubProducerClient producer, CancellationToken cancellationToken)
         {
-            await using (var producer = client.CreateProducer())
-            {
+            //await using (var producer = client.CreateProducer())
+            //{
                 int batchSize, delayInSec;
                 string key;
                 EventData eventData;
@@ -210,10 +208,9 @@ namespace Azure.Messaging.EventHubs.Samples
 
                     await Task.Delay(TimeSpan.FromSeconds(delayInSec));
                 }
-            }
         }
 
-        private async Task BackgroundReceive(EventHubClient client, string partitionId, CancellationToken cancellationToken)
+        private async Task BackgroundReceive(string connectionString, string eventHubName, string partitionId, CancellationToken cancellationToken)
         {
             var reportTasks = new List<Task>();
 
@@ -228,34 +225,34 @@ namespace Azure.Messaging.EventHubs.Samples
                 eventPosition = EventPosition.Latest;
             }
 
-            await using (var consumer = client.CreateConsumer(EventHubConsumer.DefaultConsumerGroupName, partitionId, eventPosition))
+            await using (var consumerClient = new EventHubConsumerClient("$Default", partitionId, eventPosition, connectionString, eventHubName))
             {
-                await consumer.ReceiveAsync(1, TimeSpan.Zero);
+                await consumerClient.ReceiveAsync(1, TimeSpan.Zero);
                 Interlocked.Decrement(ref consumersToConnect);
 
-                await foreach (var receivedEvent in consumer.SubscribeToEvents(TimeSpan.FromSeconds(5)))
+                await foreach (var receivedEvent in consumerClient.ReadEventsFromPartitionAsync(partitionId, eventPosition, TimeSpan.FromSeconds(5)))
                 {
-                    if (receivedEvent != null)
+                    if (receivedEvent.Data != null)
                     {
-                        var key = Encoding.UTF8.GetString(receivedEvent.Body.ToArray());
+                        var key = Encoding.UTF8.GetString(receivedEvent.Data.Body.ToArray());
 
                         if (MissingEvents.TryRemove(key, out var expectedEvent))
                         {
-                            if (HaveSameProperties(expectedEvent, receivedEvent))
+                            if (HaveSameProperties(expectedEvent, receivedEvent.Data))
                             {
                                 Interlocked.Increment(ref successfullyReceivedEventsCount);
                             }
                             else
                             {
-                                reportTasks.Add(ReportCorruptedPropertiesEvent(partitionId, expectedEvent, receivedEvent));
+                                reportTasks.Add(ReportCorruptedPropertiesEvent(partitionId, expectedEvent, receivedEvent.Data));
                             }
                         }
                         else
                         {
-                            reportTasks.Add(ReportCorruptedBodyEvent(partitionId, receivedEvent));
+                            reportTasks.Add(ReportCorruptedBodyEvent(partitionId, receivedEvent.Data));
                         }
 
-                        LastReceivedSequenceNumber[partitionId] = receivedEvent.SequenceNumber.Value;
+                        LastReceivedSequenceNumber[partitionId] = receivedEvent.Data.SequenceNumber.Value;
                     }
 
                     if (cancellationToken.IsCancellationRequested)
