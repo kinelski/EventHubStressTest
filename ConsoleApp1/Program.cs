@@ -225,9 +225,8 @@ namespace Azure.Messaging.EventHubs.Samples
                 eventPosition = EventPosition.Latest;
             }
 
-            await using (var consumerClient = new EventHubConsumerClient("$Default", partitionId, eventPosition, connectionString, eventHubName))
+            await using (var consumerClient = new EventHubConsumerClient("$Default", connectionString, eventHubName))
             {
-                await consumerClient.ReceiveAsync(1, TimeSpan.Zero);
                 Interlocked.Decrement(ref consumersToConnect);
 
                 await foreach (var receivedEvent in consumerClient.ReadEventsFromPartitionAsync(partitionId, eventPosition, TimeSpan.FromSeconds(5)))
