@@ -96,6 +96,7 @@ namespace Azure.Messaging.EventHubs.Samples
                     await Task.Delay(TimeSpan.FromMilliseconds(200));
                 }
 
+                await Task.Delay(5000);
                 sendTask = BackgroundSend(producerClient, timeoutToken);
 
                 Console.WriteLine($"Starting a { duration.ToString(@"dd\.hh\:mm\:ss") } run.\n");
