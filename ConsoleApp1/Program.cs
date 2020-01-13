@@ -7,6 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure.Messaging.EventHubs.Consumer;
+using Azure.Messaging.EventHubs.Producer;
 
 namespace Azure.Messaging.EventHubs.Samples
 {
@@ -124,7 +126,7 @@ namespace Azure.Messaging.EventHubs.Samples
                         sendTask = BackgroundSend(producerClient, timeoutToken);
                     }
 
-                    foreach (var kvp in receiveTasks)
+                    foreach (var kvp in receiveTasks.ToList())
                     {
                         var receiveTask = kvp.Value;
 
@@ -156,7 +158,7 @@ namespace Azure.Messaging.EventHubs.Samples
                 }
 
                 await sendTask;
-                await Task.WhenAll(receiveTasks.Values);
+                await Task.WhenAll(receiveTasks.Values.ToList());
 
                 foreach (var eventData in GetLostEvents())
                 {
@@ -230,7 +232,7 @@ namespace Azure.Messaging.EventHubs.Samples
             {
                 Interlocked.Decrement(ref consumersToConnect);
 
-                await foreach (var receivedEvent in consumerClient.ReadEventsFromPartitionAsync(partitionId, eventPosition, TimeSpan.FromSeconds(5)))
+                await foreach (var receivedEvent in consumerClient.ReadEventsFromPartitionAsync(partitionId, eventPosition, new ReadEventOptions { MaximumWaitTime = TimeSpan.FromSeconds(5) }))
                 {
                     if (receivedEvent.Data != null)
                     {
@@ -252,7 +254,7 @@ namespace Azure.Messaging.EventHubs.Samples
                             reportTasks.Add(ReportCorruptedBodyEvent(partitionId, receivedEvent.Data));
                         }
 
-                        LastReceivedSequenceNumber[partitionId] = receivedEvent.Data.SequenceNumber.Value;
+                        LastReceivedSequenceNumber[partitionId] = receivedEvent.Data.SequenceNumber;
                     }
 
                     if (cancellationToken.IsCancellationRequested)
