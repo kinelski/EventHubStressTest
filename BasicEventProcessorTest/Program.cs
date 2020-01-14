@@ -62,6 +62,9 @@ namespace EventProcessorTest
                     }
                     catch (TaskCanceledException)
                     {
+                        message = $"{ Environment.NewLine }{ Environment.NewLine }------------------------------{ Environment.NewLine }  The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }------------------------------";
+                        metricsWriter.WriteLine(message);
+                        errorWriter.WriteLine(message);
                     }
 
                     await Task.WhenAll

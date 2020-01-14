@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -35,19 +36,24 @@ namespace EventProcessorTest
         {
             IsRunning = true;
 
+            using var publishCancellationSource = new CancellationTokenSource();
+            using var processorCancellationSource = new CancellationTokenSource();
+
+            var publishingTask = default(Task);
+            var processorTasks = default(IEnumerable<Task>);
             var runDuration = Stopwatch.StartNew();
 
             try
             {
                 // Begin publishing events in the background.
 
-                var publishingTask = Task.Run(() => new Publisher(Configuration, Metrics, PublishedEvents, ErrorsObserved).Start(cancellationToken));
+                publishingTask = Task.Run(() => new Publisher(Configuration, Metrics, PublishedEvents, ErrorsObserved).Start(publishCancellationSource.Token));
 
                 // Start processing.
 
-                var processorTasks = Enumerable
+                processorTasks = Enumerable
                     .Range(0, Configuration.ProcessorCount)
-                    .Select(_ => Task.Run(() => new Processor(Configuration, Metrics, PublishedEvents, ErrorsObserved, ProcessEventHandler, ProcessErrorHandler).Start(cancellationToken)))
+                    .Select(_ => Task.Run(() => new Processor(Configuration, Metrics, PublishedEvents, ErrorsObserved, ProcessEventHandler, ProcessErrorHandler).Start(processorCancellationSource.Token)))
                     .ToList();
 
                 // Test for missing events and update metrics.
@@ -61,12 +67,6 @@ namespace EventProcessorTest
 
                     await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken).ConfigureAwait(false);
                 }
-
-                // The run is ending.  Clean up the outstanding background operations.  Wait
-                // for a period of time between the
-
-                await publishingTask.ConfigureAwait(false);
-                await Task.WhenAll(processorTasks).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
             {
@@ -78,6 +78,29 @@ namespace EventProcessorTest
                 || ex is ThreadAbortException)
             {
                 throw;
+            }
+            catch (Exception ex)
+            {
+                Interlocked.Increment(ref Metrics.TotalExceptions);
+                Interlocked.Increment(ref Metrics.GeneralExceptions);
+                ErrorsObserved.Add(ex);
+            }
+
+            // The run is ending.  Clean up the outstanding background operations.
+
+            try
+            {
+                publishCancellationSource.Cancel();
+                await publishingTask.ConfigureAwait(false);
+
+                // Wait a bit after publishing has completed before signaling for
+                // processing to be canceled, to allow the recently published 
+                // events to be read.
+
+                await Task.Delay(TimeSpan.FromMinutes(5)).ConfigureAwait(false);
+
+                processorCancellationSource.Cancel();
+                await Task.WhenAll(processorTasks).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
