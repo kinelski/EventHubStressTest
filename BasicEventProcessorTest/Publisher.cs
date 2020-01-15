@@ -45,7 +45,7 @@ namespace EventProcessorTest
                     {
                         RetryOptions = new EventHubsRetryOptions
                         {
-                           TryTimeout = TimeSpan.FromMinutes(2)
+                           TryTimeout = Configuration.SendTimeout
                         }
                     };
 

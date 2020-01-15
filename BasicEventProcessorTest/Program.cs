@@ -144,6 +144,9 @@ namespace EventProcessorTest
             message.AppendLine($"\tEvents Read:\t\t\t{ read.ToString("n0") } ({ (read / published).ToString("P", CultureInfo.InvariantCulture) })");
             read = (read > 0) ? read : 0.001;
 
+            metric = Interlocked.Read(ref metrics.EventsProcessed);
+            message.AppendLine($"\tEvents Processed:\t\t{ read.ToString("n0") } ({ (metric / published).ToString("P", CultureInfo.InvariantCulture) })");
+
             message.AppendLine();
 
             // Validation issues
@@ -156,6 +159,9 @@ namespace EventProcessorTest
 
             metric = Interlocked.Read(ref metrics.UnknownEventsProcessed);
             message.AppendLine($"\tUnexpected Events Received:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
+
+            metric = Interlocked.Read(ref metrics.DuplicateEventsProcessed);
+            message.AppendLine($"\tDuplicate Events Processed:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.InvalidBodies);
             message.AppendLine($"\tEvents with Invalid Bodies:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
@@ -173,6 +179,9 @@ namespace EventProcessorTest
             message.AppendLine("Client Health");
             message.AppendLine("=========================");
 
+            metric = Interlocked.Read(ref metrics.ProcessingExceptions);
+            message.AppendLine($"\tException During Processing:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
+
             metric = Interlocked.Read(ref metrics.ProcessorRestarted);
             message.AppendLine($"\tProcessor Restarts:\t\t{ metric }");
 
@@ -182,17 +191,15 @@ namespace EventProcessorTest
             metric = Interlocked.Read(ref metrics.ProducerRestarted);
             message.AppendLine($"\tProducer Restarts:\t\t{ metric }");
 
-            metric = Interlocked.Read(ref metrics.ProcessingExceptions);
-            message.AppendLine($"\tException During Processing:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
             message.AppendLine();
 
             // Exceptions
 
-            message.AppendLine("Exception Type Breakdown");
+            message.AppendLine("Exception Breakdown");
             message.AppendLine("=========================");
 
             var totalExceptions = (double)Interlocked.Read(ref metrics.TotalExceptions);
+            message.AppendLine($"\tExceptions for All Operations:\t{ totalExceptions.ToString("n0") } ({ (totalExceptions / serviceOps).ToString("P", CultureInfo.InvariantCulture) })");
             totalExceptions = (totalExceptions > 0) ? totalExceptions : 0.001;
 
             metric = Interlocked.Read(ref metrics.GeneralExceptions);
@@ -226,7 +233,7 @@ namespace EventProcessorTest
             {
                 await writer.WriteLineAsync
                 (
-                    $"{ currentException.GetType().Name }{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
+                    $"[ { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
                 );
             }
 

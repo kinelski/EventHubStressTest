@@ -23,6 +23,10 @@ namespace EventProcessorTest
 
         private ConcurrentDictionary<string, EventData> PublishedEvents { get; } = new ConcurrentDictionary<string, EventData>();
 
+        private ConcurrentDictionary<string, EventData> UnexpectedEvents { get; } = new ConcurrentDictionary<string, EventData>();
+
+        private ConcurrentDictionary<string, byte> ProcessedEvents { get; } = new ConcurrentDictionary<string, byte>();
+
         private ConcurrentDictionary<string, long> LastReadPartitionSequence { get; } = new ConcurrentDictionary<string, long>();
 
         private TestConfiguration Configuration { get; }
@@ -63,7 +67,7 @@ namespace EventProcessorTest
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     Interlocked.Exchange(ref Metrics.RunDurationMilliseconds, runDuration.Elapsed.TotalMilliseconds);
-                    TrackUnreadEvents(PublishedEvents, ErrorsObserved, eventDueInterval, Metrics);
+                    ScanForUnreadEvents(PublishedEvents, UnexpectedEvents, ProcessedEvents, ErrorsObserved, eventDueInterval, Metrics);
 
                     await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken).ConfigureAwait(false);
                 }
@@ -86,7 +90,8 @@ namespace EventProcessorTest
                 ErrorsObserved.Add(ex);
             }
 
-            // The run is ending.  Clean up the outstanding background operations.
+            // The run is ending.  Clean up the outstanding background operations and
+            // complete the necessary metrics tracking.
 
             try
             {
@@ -94,13 +99,25 @@ namespace EventProcessorTest
                 await publishingTask.ConfigureAwait(false);
 
                 // Wait a bit after publishing has completed before signaling for
-                // processing to be canceled, to allow the recently published 
+                // processing to be canceled, to allow the recently published
                 // events to be read.
 
                 await Task.Delay(TimeSpan.FromMinutes(5)).ConfigureAwait(false);
 
                 processorCancellationSource.Cancel();
                 await Task.WhenAll(processorTasks).ConfigureAwait(false);
+
+                // Wait a bit after processing has completed before and then perform
+                // the last bit of bookkeeping, scanning for missing and unexpected events.
+
+                await Task.Delay(TimeSpan.FromMinutes(2)).ConfigureAwait(false);
+                ScanForUnreadEvents(PublishedEvents, UnexpectedEvents, ProcessedEvents, ErrorsObserved, TimeSpan.FromMinutes(Configuration.EventReadLimitMinutes), Metrics);
+
+                foreach (var unexpectedEvent in UnexpectedEvents.Values)
+                {
+                    Interlocked.Increment(ref Metrics.UnknownEventsProcessed);
+                    ErrorsObserved.Add(new EventHubsException(false, Configuration.EventHub, FormatUnexpectedEvent(unexpectedEvent, false), EventHubsException.FailureReason.GeneralError));
+                }
             }
             catch (Exception ex)
             {
@@ -119,6 +136,8 @@ namespace EventProcessorTest
         {
             try
             {
+                Interlocked.Increment(ref Metrics.TotalServiceOperations);
+
                 // If there was no event then there is nothing to do.
 
                 if (!args.HasEvent)
@@ -126,14 +145,25 @@ namespace EventProcessorTest
                     return;
                 }
 
-                Interlocked.Increment(ref Metrics.TotalServiceOperations);
                 Interlocked.Increment(ref Metrics.EventsRead);
+
+                // Determine if the event has an identifier and has been tracked as published.
+
+                var hasId = args.Data.Properties.TryGetValue(Property.Id, out var id);
+                var eventId = (hasId) ? id.ToString() : null;
+                var isTrackedEvent = PublishedEvents.TryRemove(eventId, out var publishedEvent);
+
+                // If the event has an id that has been seen before, track it as a duplicate processing and
+                // take no further action.
+
+                if ((hasId) && (ProcessedEvents.ContainsKey(eventId)))
+                {
+                    Interlocked.Increment(ref Metrics.DuplicateEventsProcessed);
+                    return;
+                }
 
                 // If there the event isn't a known and published event, then track it but take no
                 // further action.
-
-                var hasId = args.Data.Properties.TryGetValue(Property.Id, out var eventId);
-                var isTrackedEvent = PublishedEvents.TryRemove(eventId.ToString(), out var publishedEvent);
 
                 if ((!hasId) || (!isTrackedEvent))
                 {
@@ -143,19 +173,35 @@ namespace EventProcessorTest
                     if (hasId)
                     {
                         await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-                        isTrackedEvent = PublishedEvents.TryRemove(eventId.ToString(), out publishedEvent);
+                        isTrackedEvent = PublishedEvents.TryRemove(eventId, out publishedEvent);
                     }
-
-                    // If there wasn't an id or the event wasn't found in the published set, then consider it
-                    // an unexpected event.
-
-                    if ((!hasId) || (!isTrackedEvent))
+                    else
                     {
+                        // If there wasn't an id then consider it an unexpected event failure.
+
                         Interlocked.Increment(ref Metrics.UnknownEventsProcessed);
                         ErrorsObserved.Add(new EventHubsException(false, Configuration.EventHub, FormatUnexpectedEvent(args.Data, isTrackedEvent), EventHubsException.FailureReason.GeneralError));
                         return;
                     }
+
+                    // If was an id, but the event wasn't tracked as published, cache it as an
+                    // unexpected event for later consideration.  If it cannot be cached, consider
+                    // it a failure.
+
+                    if (!isTrackedEvent)
+                    {
+                        if (!UnexpectedEvents.TryAdd(eventId, args.Data))
+                        {
+                            Interlocked.Increment(ref Metrics.UnknownEventsProcessed);
+                            ErrorsObserved.Add(new EventHubsException(false, Configuration.EventHub, FormatUnexpectedEvent(args.Data, isTrackedEvent), EventHubsException.FailureReason.GeneralError));
+                        }
+
+                        return;
+                    }
                 }
+
+                Interlocked.Increment(ref Metrics.EventsProcessed);
+                ProcessedEvents.TryAdd(eventId, 0);
 
                 // Validate the event against expectations.
 
@@ -326,10 +372,12 @@ namespace EventProcessorTest
             return firstProps.OrderBy(kvp => kvp.Key).SequenceEqual(secondProps.OrderBy(kvp => kvp.Key));
         }
 
-        private static void TrackUnreadEvents(ConcurrentDictionary<string, EventData> publishedEvents,
-                                              ConcurrentBag<Exception> errorsObserved,
-                                              TimeSpan eventDueInterval,
-                                              Metrics metrics)
+        private static void ScanForUnreadEvents(ConcurrentDictionary<string, EventData> publishedEvents,
+                                                ConcurrentDictionary<string, EventData> unexpectedEvents,
+                                                ConcurrentDictionary<string, byte> processedEvents,
+                                                ConcurrentBag<Exception> errorsObserved,
+                                                TimeSpan eventDueInterval,
+                                                Metrics metrics)
         {
             // An event is considered missing if it was published longer ago than the due time and
             // still exists in the set of published events.
@@ -344,8 +392,40 @@ namespace EventProcessorTest
                     && (((DateTimeOffset)publishDate).Add(eventDueInterval) < now)
                     && (publishedEvents.TryRemove(publishedEvent.Key, out _)))
                 {
-                    Interlocked.Increment(ref metrics.EventsNotReceived);
-                    errorsObserved.Add(new EventHubsException(false, string.Empty, FormatMissingEvent(publishedEvent.Value, now), EventHubsException.FailureReason.GeneralError));
+                    // Check to see if the event was read and tracked as unexpected.  If so, perform basic validation
+                    // and record it.
+
+                    if (unexpectedEvents.TryRemove(publishedEvent.Key, out var readEvent))
+                    {
+                        Interlocked.Increment(ref metrics.EventsRead);
+
+                        if (!CompareEventBodies(readEvent, publishedEvent.Value))
+                        {
+                            Interlocked.Increment(ref metrics.InvalidBodies);
+                        }
+
+                        if (!CompareEventProperties(readEvent, publishedEvent.Value))
+                        {
+                            Interlocked.Increment(ref metrics.InvalidProperties);
+                        }
+
+                        if ((!publishedEvent.Value.Properties.TryGetValue(Property.Partition, out var publishedPartition))
+                            ||(!readEvent.Properties.TryGetValue(Property.Partition, out var readPartition))
+                            || (readPartition.ToString() != publishedPartition.ToString()))
+                        {
+                            Interlocked.Increment(ref metrics.EventsFromWrongPartition);
+                        }
+
+                        Interlocked.Increment(ref metrics.EventsProcessed);
+                        processedEvents.TryAdd(publishedEvent.Key, 0);
+                    }
+                    else
+                    {
+                        // The event wasn't read earlier and tracked as unexpected; it has not been seen.  Track it as missing.
+
+                        Interlocked.Increment(ref metrics.EventsNotReceived);
+                        errorsObserved.Add(new EventHubsException(false, string.Empty, FormatMissingEvent(publishedEvent.Value, now), EventHubsException.FailureReason.GeneralError));
+                    }
                 }
             }
         }
@@ -378,11 +458,11 @@ namespace EventProcessorTest
 
             if (eventData.Properties.TryGetValue(Property.PublishDate, out value))
             {
-                builder.AppendFormat("    Published: {0} ", ((DateTimeOffset)value).ToLocalTime().ToString("mm/dd/yyyy hh:mm:ss:tt"));
+                builder.AppendFormat("    Published: {0} ", ((DateTimeOffset)value).ToLocalTime().ToString("MM/dd/yyyy hh:mm:ss:tt"));
                 builder.AppendLine();
             }
 
-            builder.AppendFormat("    Classified Missing: {0} ", markedMissingTime.ToLocalTime().ToString("mm/dd/yyyy hh:mm:ss:tt"));
+            builder.AppendFormat("    Classified Missing: {0} ", markedMissingTime.ToLocalTime().ToString("MM/dd/yyyy hh:mm:ss:tt"));
             builder.AppendLine();
 
             return builder.ToString();
@@ -416,7 +496,7 @@ namespace EventProcessorTest
 
             if (eventData.Properties.TryGetValue(Property.PublishDate, out value))
             {
-                builder.AppendFormat("    Published: {0} ", ((DateTimeOffset)value).ToLocalTime().ToString("mm/dd/yyyy hh:mm:ss:tt"));
+                builder.AppendFormat("    Published: {0} ", ((DateTimeOffset)value).ToLocalTime().ToString("MM/dd/yyyy hh:mm:ss:tt"));
                 builder.AppendLine();
             }
 

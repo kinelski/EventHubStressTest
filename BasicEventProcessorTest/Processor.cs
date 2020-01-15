@@ -42,8 +42,16 @@ namespace EventProcessorTest
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-               var storageClient = new BlobContainerClient(Configuration.StorageConnectionString, Configuration.BlobContainer);
-               var processor = new EventProcessorClient(storageClient, EventHubConsumerClient.DefaultConsumerGroupName, Configuration.EventHubsConnectionString, Configuration.EventHub);
+                var options = new EventProcessorClientOptions
+                {
+                    RetryOptions = new EventHubsRetryOptions
+                    {
+                        TryTimeout = Configuration.ReadTimeout
+                    }
+                };
+
+                var storageClient = new BlobContainerClient(Configuration.StorageConnectionString, Configuration.BlobContainer);
+                var processor = new EventProcessorClient(storageClient, EventHubConsumerClient.DefaultConsumerGroupName, Configuration.EventHubsConnectionString, Configuration.EventHub, options);
 
                 try
                 {

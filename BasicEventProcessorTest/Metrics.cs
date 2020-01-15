@@ -8,6 +8,7 @@ namespace EventProcessorTest
         public long TotalServiceOperations = 0;
         public long EventsPublished = 0;
         public long EventsRead = 0;
+        public long EventsProcessed = 0;
         public double RunDurationMilliseconds = 0;
 
         // Event validation issues
@@ -17,6 +18,7 @@ namespace EventProcessorTest
         public long EventsOutOfOrder = 0;
         public long EventsFromWrongPartition = 0;
         public long UnknownEventsProcessed = 0;
+        public long DuplicateEventsProcessed = 0;
 
         // Exceptions
         public long SendExceptions = 0;
