@@ -145,8 +145,6 @@ namespace EventProcessorTest
                     return;
                 }
 
-                Interlocked.Increment(ref Metrics.EventsRead);
-
                 // Determine if the event has an identifier and has been tracked as published.
 
                 var hasId = args.Data.Properties.TryGetValue(Property.Id, out var id);
@@ -161,6 +159,10 @@ namespace EventProcessorTest
                     Interlocked.Increment(ref Metrics.DuplicateEventsProcessed);
                     return;
                 }
+
+                // Since this event wasn't a duplicate, consider it read.
+
+                Interlocked.Increment(ref Metrics.EventsRead);
 
                 // If there the event isn't a known and published event, then track it but take no
                 // further action.
@@ -184,11 +186,10 @@ namespace EventProcessorTest
                         return;
                     }
 
-                    // If was an id, but the event wasn't tracked as published, cache it as an
-                    // unexpected event for later consideration.  If it cannot be cached, consider
-                    // it a failure.
+                    // If was an id, but the event wasn't tracked as published or processed, cache it as an
+                    // unexpected event for later consideration.  If it cannot be cached, consider it a failure.
 
-                    if (!isTrackedEvent)
+                    if ((!isTrackedEvent) && (!ProcessedEvents.ContainsKey(eventId)))
                     {
                         if (!UnexpectedEvents.TryAdd(eventId, args.Data))
                         {
@@ -199,9 +200,6 @@ namespace EventProcessorTest
                         return;
                     }
                 }
-
-                Interlocked.Increment(ref Metrics.EventsProcessed);
-                ProcessedEvents.TryAdd(eventId, 0);
 
                 // Validate the event against expectations.
 
@@ -247,6 +245,11 @@ namespace EventProcessorTest
                 {
                     await args.UpdateCheckpointAsync(args.CancellationToken).ConfigureAwait(false);
                 }
+
+                // Mark the event as processed.
+
+                Interlocked.Increment(ref Metrics.EventsProcessed);
+                ProcessedEvents.TryAdd(eventId, 0);
             }
             catch (EventHubsException ex)
             {
@@ -419,7 +422,7 @@ namespace EventProcessorTest
                         Interlocked.Increment(ref metrics.EventsProcessed);
                         processedEvents.TryAdd(publishedEvent.Key, 0);
                     }
-                    else
+                    else if (!processedEvents.ContainsKey(publishedEvent.Key))
                     {
                         // The event wasn't read earlier and tracked as unexpected; it has not been seen.  Track it as missing.
 

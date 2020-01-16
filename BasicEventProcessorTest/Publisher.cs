@@ -49,7 +49,9 @@ namespace EventProcessorTest
                         }
                     };
 
-                    await using (var producer = new EventHubProducerClient(Configuration.EventHubsConnectionString, Configuration.EventHub, options))
+                    var producer = new EventHubProducerClient(Configuration.EventHubsConnectionString, Configuration.EventHub, options);
+
+                    await using (producer.ConfigureAwait(false))
                     {
                         while (!cancellationToken.IsCancellationRequested)
                         {
@@ -63,7 +65,7 @@ namespace EventProcessorTest
                             // Because there is a side-effect of TryAdd in the statement, ensure that ToList is called to materialize the set
                             // or the batch will be empty at send.
 
-                            using var batch = await producer.CreateBatchAsync(new CreateBatchOptions { PartitionId = selectedPartition });
+                            using var batch = await producer.CreateBatchAsync(new CreateBatchOptions { PartitionId = selectedPartition }).ConfigureAwait(false);
 
                             var batchEvents = Enumerable
                                 .Range(0, Configuration.PublishBatchSize)
@@ -137,22 +139,23 @@ namespace EventProcessorTest
         private (string Id, EventData Data) GenerateEvent(long maxMessageSize,
                                                           string partition)
         {
-           // Allow a chance to generate a large size event, otherwise, randomly
-           // size within the normal range.
+            // Allow a chance to generate a large size event, otherwise, randomly
+            // size within the normal range.
 
-           long bodySize;
+            long bodySize;
 
-           if (RandomNumberGenerator.Value.NextDouble() < Configuration.LargeMessageRandomFactor)
-           {
-               bodySize = (Configuration.PublishingBodyMinBytes + (long)(RandomNumberGenerator.Value.NextDouble() * (maxMessageSize - Configuration.PublishingBodyMinBytes)));
-           }
-           else
-           {
-               bodySize = RandomNumberGenerator.Value.Next(Configuration.PublishingBodyMinBytes, Configuration.PublishingBodyRegularMaxBytes);
-           }
+            if (RandomNumberGenerator.Value.NextDouble() < Configuration.LargeMessageRandomFactor)
+            {
+                bodySize = (Configuration.PublishingBodyMinBytes + (long)(RandomNumberGenerator.Value.NextDouble() * (maxMessageSize - Configuration.PublishingBodyMinBytes)));
+            }
+            else
+            {
+                bodySize = RandomNumberGenerator.Value.Next(Configuration.PublishingBodyMinBytes, Configuration.PublishingBodyRegularMaxBytes);
+            }
 
             var id = Guid.NewGuid().ToString();
             var body = new byte[bodySize];
+            RandomNumberGenerator.Value.NextBytes(body);
 
             var eventData = new EventData(body);
             eventData.Properties[Property.Id] = id;

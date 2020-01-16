@@ -62,7 +62,7 @@ namespace EventProcessorTest
                     }
                     catch (TaskCanceledException)
                     {
-                        message = $"{ Environment.NewLine }{ Environment.NewLine }------------------------------{ Environment.NewLine }  The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }------------------------------";
+                        message = $"{ Environment.NewLine }{ Environment.NewLine }------------------------------------------------------------{ Environment.NewLine }  The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }------------------------------------------------------------";
                         metricsWriter.WriteLine(message);
                         errorWriter.WriteLine(message);
                     }
@@ -179,14 +179,8 @@ namespace EventProcessorTest
             message.AppendLine("Client Health");
             message.AppendLine("=========================");
 
-            metric = Interlocked.Read(ref metrics.ProcessingExceptions);
-            message.AppendLine($"\tException During Processing:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
             metric = Interlocked.Read(ref metrics.ProcessorRestarted);
             message.AppendLine($"\tProcessor Restarts:\t\t{ metric }");
-
-            metric = Interlocked.Read(ref metrics.SendExceptions);
-            message.AppendLine($"\tException During Send:\t\t{ metric.ToString("n0") } ({ (metric / published).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.ProducerRestarted);
             message.AppendLine($"\tProducer Restarts:\t\t{ metric }");
@@ -201,6 +195,12 @@ namespace EventProcessorTest
             var totalExceptions = (double)Interlocked.Read(ref metrics.TotalExceptions);
             message.AppendLine($"\tExceptions for All Operations:\t{ totalExceptions.ToString("n0") } ({ (totalExceptions / serviceOps).ToString("P", CultureInfo.InvariantCulture) })");
             totalExceptions = (totalExceptions > 0) ? totalExceptions : 0.001;
+
+            metric = Interlocked.Read(ref metrics.SendExceptions);
+            message.AppendLine($"\tException During Send:\t\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
+
+            metric = Interlocked.Read(ref metrics.ProcessingExceptions);
+            message.AppendLine($"\tException During Processing:\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.GeneralExceptions);
             message.AppendLine($"\tGeneral Exceptions:\t\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
