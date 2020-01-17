@@ -18,7 +18,7 @@ namespace EventProcessorTest
         public long EventsOutOfOrder = 0;
         public long EventsFromWrongPartition = 0;
         public long UnknownEventsProcessed = 0;
-        public long DuplicateEventsProcessed = 0;
+        public long DuplicateEventsDiscarded = 0;
 
         // Exceptions
         public long SendExceptions = 0;

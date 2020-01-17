@@ -57,7 +57,7 @@ namespace EventProcessorTest
 
                 processorTasks = Enumerable
                     .Range(0, Configuration.ProcessorCount)
-                    .Select(_ => Task.Run(() => new Processor(Configuration, Metrics, PublishedEvents, ErrorsObserved, ProcessEventHandler, ProcessErrorHandler).Start(processorCancellationSource.Token)))
+                    .Select(_ => Task.Run(() => new Processor(Configuration, Metrics, ErrorsObserved, ProcessEventHandler, ProcessErrorHandler).Start(processorCancellationSource.Token)))
                     .ToList();
 
                 // Test for missing events and update metrics.
@@ -156,7 +156,7 @@ namespace EventProcessorTest
 
                 if ((hasId) && (ProcessedEvents.ContainsKey(eventId)))
                 {
-                    Interlocked.Increment(ref Metrics.DuplicateEventsProcessed);
+                    Interlocked.Increment(ref Metrics.DuplicateEventsDiscarded);
                     return;
                 }
 
@@ -279,6 +279,7 @@ namespace EventProcessorTest
                     Interlocked.Increment(ref Metrics.GeneralExceptions);
                 }
 
+                Interlocked.Increment(ref Metrics.TotalExceptions);
                 Interlocked.Increment(ref Metrics.ProcessingExceptions);
                 ErrorsObserved.Add(args.Exception);
             }

@@ -13,9 +13,7 @@ namespace EventProcessorTest
     {
         private Metrics Metrics { get; }
 
-        private ConcurrentBag<Exception> ErrorsObserved { get; } = new ConcurrentBag<Exception>();
-
-        private ConcurrentDictionary<string, EventData> PublishedEvents { get; } = new ConcurrentDictionary<string, EventData>();
+        private ConcurrentBag<Exception> ErrorsObserved { get; }
 
         private TestConfiguration Configuration { get; }
 
@@ -25,14 +23,12 @@ namespace EventProcessorTest
 
         public Processor(TestConfiguration configuration,
                          Metrics metrics,
-                         ConcurrentDictionary<string, EventData> publishedEvents,
                          ConcurrentBag<Exception> errorsObserved,
                          Func<ProcessEventArgs, Task> processEventHandler,
                          Func<ProcessErrorEventArgs, Task> processErrorHandler)
         {
             Configuration = configuration;
             Metrics = metrics;
-            PublishedEvents = publishedEvents;
             ErrorsObserved = errorsObserved;
             ProcessEventHandler = processEventHandler;
             ProcessErrorHandler = processErrorHandler;

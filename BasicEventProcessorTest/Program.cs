@@ -160,8 +160,8 @@ namespace EventProcessorTest
             metric = Interlocked.Read(ref metrics.UnknownEventsProcessed);
             message.AppendLine($"\tUnexpected Events Received:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
 
-            metric = Interlocked.Read(ref metrics.DuplicateEventsProcessed);
-            message.AppendLine($"\tDuplicate Events Processed:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
+            metric = Interlocked.Read(ref metrics.DuplicateEventsDiscarded);
+            message.AppendLine($"\tDuplicate Events Discarded:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.InvalidBodies);
             message.AppendLine($"\tEvents with Invalid Bodies:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
