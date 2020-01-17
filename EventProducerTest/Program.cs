@@ -136,12 +136,13 @@ namespace EventProducerTest
             message.AppendLine($"\tNumber of Publishers:\t\t{ configuration.ProducerCount.ToString("n0") }");
             message.AppendLine($"\tConcurrent Sends per Publisher:\t{ configuration.ConcurrentSends.ToString("n0") }");
             message.AppendLine($"\tTarget Batch Size:\t\t{ configuration.PublishBatchSize.ToString("n0") }");
+            message.AppendLine($"\tMinimum Message Size:\t\t{ configuration.PublishingBodyMinBytes.ToString("n0") } (bytes)");
             message.AppendLine($"\tLarge Message Factor:\t\t{ configuration.LargeMessageRandomFactor.ToString("P", CultureInfo.InvariantCulture) }");
             message.AppendLine();
 
             // Publish and read pairing
 
-            message.AppendLine("Publishing and Receiving");
+            message.AppendLine("Publishing");
             message.AppendLine("=========================");
 
             var serviceOps = (double)Interlocked.Read(ref metrics.TotalServiceOperations);
@@ -154,6 +155,7 @@ namespace EventProducerTest
 
             metric = Interlocked.Read(ref metrics.EventsPublished);
             message.AppendLine($"\tEvents Published:\t\t{ metric.ToString("n0") }");
+            message.AppendLine($"\tAverage Events per Batch:\t\t{ ( metric / batches).ToString("n0") }");
 
             metric = Interlocked.Read(ref metrics.TotalPublshedSizeBytes);
             message.AppendLine($"\tAverage Batch Size:\t\t{ FormatBytes((long)(metric / batches)) }");
@@ -168,8 +170,8 @@ namespace EventProducerTest
             metric = Interlocked.Read(ref metrics.ProducerRestarted);
             message.AppendLine($"\tProducer Restarts:\t\t{ metric }");
 
-            metric = Interlocked.Read(ref metrics.CanceledSendExceptions);
-            message.AppendLine($"\tAborted Sends:\t\t\t{ metric }");
+            var cancelledSends = Interlocked.Read(ref metrics.CanceledSendExceptions);
+            message.AppendLine($"\tAborted Sends:\t\t\t{ cancelledSends }");
 
             message.AppendLine();
 
@@ -190,6 +192,8 @@ namespace EventProducerTest
 
             metric = Interlocked.Read(ref metrics.TimeoutExceptions);
             message.AppendLine($"\tTimeout Exceptions:\t\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
+
+            message.AppendLine($"\tOperation Canceled Exceptions:\t{ metric.ToString("n0") } ({ (cancelledSends / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.CommunicationExceptions);
             message.AppendLine($"\tCommunication Exceptions:\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
