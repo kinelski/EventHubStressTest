@@ -6,13 +6,13 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace EventProcessorTest
+namespace EventProducerTest
 {
     public static class Program
     {
         private static readonly TimeSpan DefaultProcessReportInterval = TimeSpan.FromSeconds(45);
         private static readonly TimeSpan DefaultRunDuration = TimeSpan.FromHours(72);
-        private static readonly string DefaultErrorLogPath = Path.Combine(Environment.CurrentDirectory, $"processor-test-errors-{ DateTime.Now.ToString("yyyy-MM-dd_hh-mm-ss") }.log");
+        private static readonly string DefaultErrorLogPath = Path.Combine(Environment.CurrentDirectory, $"producer-run-errors-{ DateTime.Now.ToString("yyyy-MM-dd_hh-mm-ss") }.log");
 
         public static async Task Main(string[] args)
         {
@@ -44,20 +44,19 @@ namespace EventProcessorTest
 
                 cancellationSource.CancelAfter(runDuration);
 
-                var testRun = new TestRun(new TestConfiguration
+                var configuration = new TestConfiguration
                 {
                     EventHubsConnectionString = runArgs.EventHubsConnectionString,
-                    EventHub = runArgs.EventHub,
-                    StorageConnectionString = runArgs.StorageConnectionString,
-                    BlobContainer = runArgs.BlobContainer
-                });
+                    EventHub = runArgs.EventHub
+                };
 
+                var testRun = new TestRun(configuration);
                 var testRunTask = testRun.Start(cancellationSource.Token);
 
                 // Make an initial metrics report now that the run is taking place.
 
                 await (Task.Delay(TimeSpan.FromSeconds(1)));
-                await ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration);
+                await ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration, configuration);
 
                 // Allow the run to take place, periodically reporting.
 
@@ -76,7 +75,7 @@ namespace EventProcessorTest
 
                     await Task.WhenAll
                     (
-                        ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration),
+                        ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration, configuration),
                         ReportErrorsAsync(errorWriter, testRun.ErrorsObserved)
                     );
                 }
@@ -89,7 +88,7 @@ namespace EventProcessorTest
 
                 await Task.WhenAll
                 (
-                    ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration),
+                    ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration, configuration),
                     ReportErrorsAsync(errorWriter, testRun.ErrorsObserved)
                 );
 
@@ -118,10 +117,12 @@ namespace EventProcessorTest
 
         private static Task ReportMetricsAsync(TextWriter writer,
                                                Metrics metrics,
-                                               TimeSpan runDuration)
+                                               TimeSpan runDuration,
+                                               TestConfiguration configuration)
         {
+            long metric;
+
             var message = new StringBuilder();
-            var metric = default(long);
 
             // Run time
 
@@ -132,6 +133,10 @@ namespace EventProcessorTest
             message.AppendLine("=========================");
             message.AppendLine($"\tRun Duration:\t\t\t{ runDuration.ToString(@"dd\.hh\:mm\:ss") }");
             message.AppendLine($"\tElapsed:\t\t\t{ currentDuration.ToString(@"dd\.hh\:mm\:ss") } ({ (currentDuration / runDuration).ToString("P", CultureInfo.InvariantCulture) })");
+            message.AppendLine($"\tNumber of Publishers:\t\t{ configuration.ProducerCount.ToString("n0") }");
+            message.AppendLine($"\tConcurrent Sends per Publisher:\t{ configuration.ConcurrentSends.ToString("n0") }");
+            message.AppendLine($"\tTarget Batch Size:\t\t{ configuration.PublishBatchSize.ToString("n0") }");
+            message.AppendLine($"\tLarge Message Factor:\t\t{ configuration.LargeMessageRandomFactor.ToString("P", CultureInfo.InvariantCulture) }");
             message.AppendLine();
 
             // Publish and read pairing
@@ -143,41 +148,15 @@ namespace EventProcessorTest
             message.AppendLine($"\tService Operations:\t\t{ serviceOps.ToString("n0") }");
             serviceOps = (serviceOps > 0) ? serviceOps : 0.001;
 
-            var published = (double)Interlocked.Read(ref metrics.EventsPublished);
-            message.AppendLine($"\tEvents Published:\t\t{ published.ToString("n0") }");
-            published = (published > 0) ? published : 0.001;
+            var batches = (double)Interlocked.Read(ref metrics.BatchesPublished);
+            message.AppendLine($"\tBatches Published:\t\t{ batches.ToString("n0") }");
+            batches = (batches > 0) ? batches : 0.001;
 
-            var read = (double)Interlocked.Read(ref metrics.EventsRead);
-            message.AppendLine($"\tEvents Read:\t\t\t{ read.ToString("n0") } ({ (read / published).ToString("P", CultureInfo.InvariantCulture) })");
-            read = (read > 0) ? read : 0.001;
+            metric = Interlocked.Read(ref metrics.EventsPublished);
+            message.AppendLine($"\tEvents Published:\t\t{ metric.ToString("n0") }");
 
-            metric = Interlocked.Read(ref metrics.EventsProcessed);
-            message.AppendLine($"\tEvents Processed:\t\t{ read.ToString("n0") } ({ (metric / published).ToString("P", CultureInfo.InvariantCulture) })");
-
-            message.AppendLine();
-
-            // Validation issues
-
-            message.AppendLine("Event Validation");
-            message.AppendLine("=========================");
-
-            metric = Interlocked.Read(ref metrics.EventsNotReceived);
-            message.AppendLine($"\tEvents Not Received:\t\t{ metric.ToString("n0") } ({ (metric / published).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.UnknownEventsProcessed);
-            message.AppendLine($"\tUnexpected Events Received:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.DuplicateEventsDiscarded);
-            message.AppendLine($"\tDuplicate Events Discarded:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.InvalidBodies);
-            message.AppendLine($"\tEvents with Invalid Bodies:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.InvalidProperties);
-            message.AppendLine($"\tEvents with Invalid Properties:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.EventsFromWrongPartition);
-            message.AppendLine($"\tEvents From a Wrong Partition:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
+            metric = Interlocked.Read(ref metrics.TotalPublshedSizeBytes);
+            message.AppendLine($"\tAverage Batch Size:\t\t{ FormatBytes((long)(metric / batches)) }");
 
             message.AppendLine();
 
@@ -186,11 +165,11 @@ namespace EventProcessorTest
             message.AppendLine("Client Health");
             message.AppendLine("=========================");
 
-            metric = Interlocked.Read(ref metrics.ProcessorRestarted);
-            message.AppendLine($"\tProcessor Restarts:\t\t{ metric }");
-
             metric = Interlocked.Read(ref metrics.ProducerRestarted);
             message.AppendLine($"\tProducer Restarts:\t\t{ metric }");
+
+            metric = Interlocked.Read(ref metrics.CanceledSendExceptions);
+            message.AppendLine($"\tAborted Sends:\t\t\t{ metric }");
 
             message.AppendLine();
 
@@ -205,9 +184,6 @@ namespace EventProcessorTest
 
             metric = Interlocked.Read(ref metrics.SendExceptions);
             message.AppendLine($"\tException During Send:\t\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.ProcessingExceptions);
-            message.AppendLine($"\tException During Processing:\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.GeneralExceptions);
             message.AppendLine($"\tGeneral Exceptions:\t\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
@@ -229,6 +205,26 @@ namespace EventProcessorTest
             message.AppendLine();
 
             return writer.WriteLineAsync(message.ToString());
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            const long scale = 1024;
+
+            var orders = new string[]{ "TB", "MB", "KB", "bytes" };
+            var max = (long)Math.Pow(scale, (orders.Length - 1));
+
+            foreach (string order in orders)
+            {
+                if (bytes > max)
+                {
+                    return string.Format("{0:##.##} {1}", Decimal.Divide(bytes, max), order);
+                }
+
+                max /= scale;
+            }
+
+            return "0 bytes";
         }
 
          private static async Task ReportErrorsAsync(TextWriter writer,
@@ -269,44 +265,22 @@ namespace EventProcessorTest
                 Console.WriteLine();
             }
 
-            // Prompt for the storage connection string, if it wasn't passed.
-
-            while (string.IsNullOrEmpty(parsedArgs.StorageConnectionString))
-            {
-                Console.Write("Please provide the connection string for the Azure storage account that you'd like to use and then press Enter: ");
-                parsedArgs.StorageConnectionString = Console.ReadLine().Trim();
-                Console.WriteLine();
-            }
-
-            // Prompt for the blob container name, if it wasn't passed.
-
-            while (string.IsNullOrEmpty(parsedArgs.BlobContainer))
-            {
-                Console.Write("Please provide the name of the blob container that you'd like to use and then press Enter: ");
-                parsedArgs.BlobContainer = Console.ReadLine().Trim();
-                Console.WriteLine();
-            }
-
             return parsedArgs;
         }
 
         private static CommandLineArguments ParseArguments(string[] args)
         {
-            // If at least four arguments were passed with no argument designator, then assume they're values and
+            // If at least two arguments were passed with no argument designator, then assume they're values and
             // accept them positionally.
 
-            if ((args.Length >= 4)
+            if ((args.Length >= 2)
                 && (!args[0].StartsWith(CommandLineArguments.ArgumentPrefix))
-                && (!args[1].StartsWith(CommandLineArguments.ArgumentPrefix))
-                && (!args[2].StartsWith(CommandLineArguments.ArgumentPrefix))
-                && (!args[3].StartsWith(CommandLineArguments.ArgumentPrefix)))
+                && (!args[1].StartsWith(CommandLineArguments.ArgumentPrefix)))
             {
                 var parsed = new CommandLineArguments
                 {
                     EventHubsConnectionString = args[0],
-                    EventHub = args[1],
-                    StorageConnectionString = args[2],
-                    BlobContainer = args[3]
+                    EventHub = args[1]
                 };
 
                 if ((args.Length >= 5) && (!args[4].StartsWith(CommandLineArguments.ArgumentPrefix)))
@@ -354,14 +328,6 @@ namespace EventProcessorTest
                 {
                     parsedArgs.EventHub = args[index + 1].Trim();
                 }
-                else if (args[index].Equals($"{ CommandLineArguments.ArgumentPrefix }{ nameof(CommandLineArguments.StorageConnectionString) }", StringComparison.OrdinalIgnoreCase))
-                {
-                    parsedArgs.StorageConnectionString = args[index + 1].Trim();
-                }
-                else if (args[index].Equals($"{ CommandLineArguments.ArgumentPrefix }{ nameof(CommandLineArguments.BlobContainer) }", StringComparison.OrdinalIgnoreCase))
-                {
-                    parsedArgs.BlobContainer = args[index + 1].Trim();
-                }
                 else if (args[index].Equals($"{ CommandLineArguments.ArgumentPrefix }{ nameof(CommandLineArguments.RunDurationHours) }", StringComparison.OrdinalIgnoreCase))
                 {
                     parsedArgs.RunDurationHours = args[index + 1].Trim();
@@ -380,8 +346,6 @@ namespace EventProcessorTest
             public const string ArgumentPrefix = "--";
             public string EventHubsConnectionString;
             public string EventHub;
-            public string StorageConnectionString;
-            public string BlobContainer;
             public string RunDurationHours;
             public string LogPath;
         }

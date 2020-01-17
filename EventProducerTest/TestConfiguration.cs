@@ -1,0 +1,23 @@
+﻿using System;
+
+namespace EventProducerTest
+{
+    internal class TestConfiguration
+    {
+        // Connection info
+
+        public string EventHubsConnectionString;
+        public string EventHub;
+
+        // Publishing
+
+        public int ProducerCount = 4;
+        public int ConcurrentSends = 10;
+        public int PublishBatchSize = 50;
+        public int PublishingBodyMinBytes = 100;
+        public int PublishingBodyRegularMaxBytes = 757760;
+        public double LargeMessageRandomFactor = 0.15;
+        public TimeSpan SendTimeout = TimeSpan.FromMinutes(3);
+        public TimeSpan? PublishingDelay = TimeSpan.FromMilliseconds(15);
+    }
+}

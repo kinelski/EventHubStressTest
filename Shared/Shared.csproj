@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RestoreSources>
+      https://azuresdkartifacts.blob.core.windows.net/azure-sdk-for-net/index.json;
+      https://api.nuget.org/v3/index.json;
+    </RestoreSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.0.0-dev.*"></PackageReference>
+    <PackageReference Include="Azure.Messaging.EventHubs.Processor" Version="5.0.0-dev.*"></PackageReference>
+  </ItemGroup>
+
+</Project>

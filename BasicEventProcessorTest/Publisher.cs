@@ -18,9 +18,9 @@ namespace EventProcessorTest
 
         private Metrics Metrics { get; }
 
-        private ConcurrentBag<Exception> ErrorsObserved { get; } = new ConcurrentBag<Exception>();
+        private ConcurrentBag<Exception> ErrorsObserved { get; }
 
-        private ConcurrentDictionary<string, EventData> PublishedEvents { get; } = new ConcurrentDictionary<string, EventData>();
+        private ConcurrentDictionary<string, EventData> PublishedEvents { get; }
 
         private TestConfiguration Configuration { get; }
 
