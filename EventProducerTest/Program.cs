@@ -218,7 +218,7 @@ namespace EventProducerTest
             {
                 if (bytes > max)
                 {
-                    return string.Format("{0:##.##} {1}", Decimal.Divide(bytes, max), order);
+                    return string.Format("{0:n2} {1}", Decimal.Divide(bytes, max), order);
                 }
 
                 max /= scale;

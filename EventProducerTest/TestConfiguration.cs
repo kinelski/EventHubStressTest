@@ -11,9 +11,9 @@ namespace EventProducerTest
 
         // Publishing
 
-        public int ProducerCount = 4;
+        public int ProducerCount = 32;
         public int ConcurrentSends = 10;
-        public int PublishBatchSize = 50;
+        public int PublishBatchSize = 100;
         public int PublishingBodyMinBytes = 100;
         public int PublishingBodyRegularMaxBytes = 757760;
         public double LargeMessageRandomFactor = 0.15;
