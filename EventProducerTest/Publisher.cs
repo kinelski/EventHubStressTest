@@ -74,7 +74,6 @@ namespace EventProducerTest
                                             await Task.Delay(Configuration.PublishingDelay.Value, backgroundCancellationSource.Token).ConfigureAwait(false);
                                         }
                                     }
-
                                 }));
                             }
                         }

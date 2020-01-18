@@ -68,7 +68,7 @@ namespace EventProducerTest
                     }
                     catch (TaskCanceledException)
                     {
-                        message = $"{ Environment.NewLine }{ Environment.NewLine }------------------------------------------------------------{ Environment.NewLine }  The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }------------------------------------------------------------";
+                        message = $"{ Environment.NewLine }{ Environment.NewLine }--------------------------------------------------------------------------{ Environment.NewLine }  The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }--------------------------------------------------------------------------{ Environment.NewLine }";
                         metricsWriter.WriteLine(message);
                         errorWriter.WriteLine(message);
                     }
@@ -135,7 +135,7 @@ namespace EventProducerTest
             message.AppendLine($"\tElapsed:\t\t\t{ currentDuration.ToString(@"dd\.hh\:mm\:ss") } ({ (currentDuration / runDuration).ToString("P", CultureInfo.InvariantCulture) })");
             message.AppendLine($"\tNumber of Publishers:\t\t{ configuration.ProducerCount.ToString("n0") }");
             message.AppendLine($"\tConcurrent Sends per Publisher:\t{ configuration.ConcurrentSends.ToString("n0") }");
-            message.AppendLine($"\tTarget Batch Size:\t\t{ configuration.PublishBatchSize.ToString("n0") }");
+            message.AppendLine($"\tTarget Batch Size:\t\t{ configuration.PublishBatchSize.ToString("n0") } (events)");
             message.AppendLine($"\tMinimum Message Size:\t\t{ configuration.PublishingBodyMinBytes.ToString("n0") } (bytes)");
             message.AppendLine($"\tLarge Message Factor:\t\t{ configuration.LargeMessageRandomFactor.ToString("P", CultureInfo.InvariantCulture) }");
             message.AppendLine();
@@ -155,7 +155,7 @@ namespace EventProducerTest
 
             metric = Interlocked.Read(ref metrics.EventsPublished);
             message.AppendLine($"\tEvents Published:\t\t{ metric.ToString("n0") }");
-            message.AppendLine($"\tAverage Events per Batch:\t\t{ ( metric / batches).ToString("n0") }");
+            message.AppendLine($"\tAverage Events per Batch:\t{ ( metric / batches).ToString("n0") }");
 
             metric = Interlocked.Read(ref metrics.TotalPublshedSizeBytes);
             message.AppendLine($"\tAverage Batch Size:\t\t{ FormatBytes((long)(metric / batches)) }");
@@ -193,7 +193,7 @@ namespace EventProducerTest
             metric = Interlocked.Read(ref metrics.TimeoutExceptions);
             message.AppendLine($"\tTimeout Exceptions:\t\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
 
-            message.AppendLine($"\tOperation Canceled Exceptions:\t{ metric.ToString("n0") } ({ (cancelledSends / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
+            message.AppendLine($"\tOperation Canceled Exceptions:\t{ cancelledSends.ToString("n0") } ({ (cancelledSends / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.CommunicationExceptions);
             message.AppendLine($"\tCommunication Exceptions:\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
@@ -240,7 +240,7 @@ namespace EventProducerTest
             {
                 await writer.WriteLineAsync
                 (
-                    $"[ { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
+                    $"[ { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }< { currentException.InnerException?.GetType()?.Name ?? "No Inner Exception" } >{ Environment.NewLine }"
                 );
             }
 
