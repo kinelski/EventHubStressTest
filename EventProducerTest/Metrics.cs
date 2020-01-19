@@ -5,7 +5,7 @@ namespace EventProducerTest
     internal class Metrics
     {
         // Basic statistics
-        public long TotalServiceOperations = 0;
+        public long PublishAttempts = 0;
         public long EventsPublished = 0;
         public long BatchesPublished = 0;
         public long TotalPublshedSizeBytes = 0;

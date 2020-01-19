@@ -146,12 +146,12 @@ namespace EventProducerTest
             {
                 if (batch.Count > 0)
                 {
+                    Interlocked.Increment(ref Metrics.PublishAttempts);
                     await producer.SendAsync(batch, cancellationToken).ConfigureAwait(false);
 
+                    Interlocked.Increment(ref Metrics.BatchesPublished);
                     Interlocked.Add(ref Metrics.EventsPublished, batch.Count);
                     Interlocked.Add(ref Metrics.TotalPublshedSizeBytes, batch.SizeInBytes);
-                    Interlocked.Increment(ref Metrics.BatchesPublished);
-                    Interlocked.Increment(ref Metrics.TotalServiceOperations);
                 }
             }
             catch (TaskCanceledException)
@@ -169,6 +169,13 @@ namespace EventProducerTest
                 Interlocked.Increment(ref Metrics.TotalExceptions);
                 Interlocked.Increment(ref Metrics.SendExceptions);
                 Interlocked.Increment(ref Metrics.CanceledSendExceptions);
+                ErrorsObserved.Add(ex);
+            }
+            catch (TimeoutException ex)
+            {
+                Interlocked.Increment(ref Metrics.TotalExceptions);
+                Interlocked.Increment(ref Metrics.SendExceptions);
+                Interlocked.Increment(ref Metrics.TimeoutExceptions);
                 ErrorsObserved.Add(ex);
             }
             catch (Exception ex)
@@ -193,7 +200,8 @@ namespace EventProducerTest
             }
             else
             {
-                bodySize = RandomNumberGenerator.Value.Next(Configuration.PublishingBodyMinBytes, Configuration.PublishingBodyRegularMaxBytes);
+                maxMessageSize = (Configuration.PublishingBodyRegularMaxBytes / Configuration.PublishBatchSize);
+                bodySize = RandomNumberGenerator.Value.Next(Configuration.PublishingBodyMinBytes, (int)maxMessageSize);
             }
 
             var body = new byte[bodySize];

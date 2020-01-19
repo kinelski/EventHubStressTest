@@ -145,12 +145,12 @@ namespace EventProducerTest
             message.AppendLine("Publishing");
             message.AppendLine("=========================");
 
-            var serviceOps = (double)Interlocked.Read(ref metrics.TotalServiceOperations);
-            message.AppendLine($"\tService Operations:\t\t{ serviceOps.ToString("n0") }");
-            serviceOps = (serviceOps > 0) ? serviceOps : 0.001;
+            var publishAttempts = (double)Interlocked.Read(ref metrics.PublishAttempts);
+            message.AppendLine($"\tSend Attempts:\t\t\t{ publishAttempts.ToString("n0") }");
+            publishAttempts = (publishAttempts > 0) ? publishAttempts : 0.001;
 
             var batches = (double)Interlocked.Read(ref metrics.BatchesPublished);
-            message.AppendLine($"\tBatches Published:\t\t{ batches.ToString("n0") }");
+            message.AppendLine($"\tBatches Published:\t\t{ batches.ToString("n0") } ({ (batches / publishAttempts).ToString("P", CultureInfo.InvariantCulture) })");
             batches = (batches > 0) ? batches : 0.001;
 
             metric = Interlocked.Read(ref metrics.EventsPublished);
@@ -181,7 +181,7 @@ namespace EventProducerTest
             message.AppendLine("=========================");
 
             var totalExceptions = (double)Interlocked.Read(ref metrics.TotalExceptions);
-            message.AppendLine($"\tExceptions for All Operations:\t{ totalExceptions.ToString("n0") } ({ (totalExceptions / serviceOps).ToString("P", CultureInfo.InvariantCulture) })");
+            message.AppendLine($"\tExceptions for All Operations:\t{ totalExceptions.ToString("n0") } ({ (totalExceptions / publishAttempts).ToString("P", CultureInfo.InvariantCulture) })");
             totalExceptions = (totalExceptions > 0) ? totalExceptions : 0.001;
 
             metric = Interlocked.Read(ref metrics.SendExceptions);
@@ -234,13 +234,15 @@ namespace EventProducerTest
          private static async Task ReportErrorsAsync(TextWriter writer,
                                                      ConcurrentBag<Exception> exceptions)
         {
+            var nowStamp = $"[{ DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss:tt") }] ";
+
             Exception currentException;
 
             while (exceptions.TryTake(out currentException))
             {
                 await writer.WriteLineAsync
                 (
-                    $"[ { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }< { currentException.InnerException?.GetType()?.Name ?? "No Inner Exception" } >{ Environment.NewLine }"
+                    $"{ nowStamp }[ { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }< { currentException.InnerException?.GetType()?.Name ?? "No Inner Exception" } >{ Environment.NewLine }"
                 );
             }
 
