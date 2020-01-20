@@ -156,6 +156,7 @@ namespace EventProducerTest
             }
             catch (TaskCanceledException)
             {
+                Interlocked.Decrement(ref Metrics.PublishAttempts);
             }
             catch (EventHubsException ex)
             {
