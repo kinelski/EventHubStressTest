@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Consumer;
+using Azure.Messaging.EventHubs.Core;
 using Azure.Messaging.EventHubs.Producer;
 
 namespace TransportProducerPoolTest
@@ -58,12 +59,15 @@ namespace TransportProducerPoolTest
         private DateTimeOffset StartDate;
         private ConcurrentDictionary<string, EventData> MissingEvents;
         private ConcurrentDictionary<string, long> LastReceivedSequenceNumber;
-        private ConcurrentDictionary<string, KeyValuePair<int, Task>> SendingTasks;
         private TextWriter Log;
+
+        public ConcurrentDictionary<string, KeyValuePair<int, Task>> SendingTasks;
 
         public async Task Run(string connectionString, string eventHubName, TimeSpan duration)
         {
             Console.WriteLine($"Setting up.");
+
+            DiagnosticListener.AllListeners.Subscribe(new TransportProducerPoolReceiver(this));
 
             consumersToConnect = 0;
             batchesCount = 0;
@@ -151,7 +155,7 @@ namespace TransportProducerPoolTest
                         }
                     }
 
-                    if (reportStatus.Elapsed > TimeSpan.FromSeconds(30))
+                    if (reportStatus.Elapsed > TimeSpan.FromMinutes(10))
                     {
                         reportTasks.Add(ReportStatus());
                         reportStatus = Stopwatch.StartNew();
@@ -432,6 +436,108 @@ namespace TransportProducerPoolTest
             return log
                 ? Log.WriteLineAsync(output)
                 : Task.CompletedTask;
+        }
+    }
+
+    class TransportProducerPoolReceiver : IObserver<DiagnosticListener>, IObserver<KeyValuePair<string, object>>
+    {
+        private readonly TransportProducerPoolTest test;
+
+        public TransportProducerPoolReceiver(TransportProducerPoolTest test)
+        {
+            this.test = test;
+        }
+
+        public void OnCompleted()
+        {
+        }
+
+        public void OnError(Exception error)
+        {
+        }
+
+        public void OnNext(KeyValuePair<string, object> value)
+        {
+            try
+            {
+                if (value.Key == $"{ nameof(TransportProducerPool) }.{ nameof(TransportProducerPool.PoolItem) }.Start")
+                {
+                    string partitionId = Activity.Current.Tags.FirstOrDefault(t => t.Key == "PartitionId").Value;
+                    ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
+
+                    string message =
+                        $"A new PoolItem was created." + Environment.NewLine +
+                        $"The partition id is: { partitionId }" + Environment.NewLine +
+                        $"Actively sending to: { string.Join(", ", test.SendingTasks.Values.OrderBy(kvp => kvp.Key).Select(kvp => kvp.Key)) }" + Environment.NewLine +
+                        $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
+
+                    Console.WriteLine(message);
+                }
+                else if (value.Key == $"{ nameof(TransportProducerPool) }.PoolItem.Stop")
+                {
+                    string message =
+                        $"A PoolItem was evicted." + Environment.NewLine +
+                        $"The partition id is: { value.Value }" + Environment.NewLine +
+                        $"Actively sending to: { string.Join(", ", test.SendingTasks.Values.Select(kvp => kvp.Key)) }" + Environment.NewLine;
+
+                    Console.WriteLine(message);
+                }
+                else if (value.Key == $"{ nameof(TransportProducerPool) }.CreateExpirationTimerCallback.Start")
+                {
+                    ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
+
+                    string message =
+                        $"The ExpirationTimerCallback started at { DateTimeOffset.UtcNow }." + Environment.NewLine +
+                        $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
+
+                    Console.WriteLine(message);
+                }
+                else if (value.Key == $"{ nameof(TransportProducerPool) }.CreateExpirationTimerCallback.Stop")
+                {
+                    ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
+
+                    string message =
+                        $"The ExpirationTimerCallback finished." + Environment.NewLine +
+                        $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
+
+                    Console.WriteLine(message);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"An error occurred handling events { e.ToString() }" + Environment.NewLine);
+            }
+        }
+
+        public void OnNext(DiagnosticListener value)
+        {
+            if (value.Name == nameof(TransportProducerPool))
+            {
+                value.Subscribe(this);
+            }
+        }
+
+        private string CreatePoolSnapshot(ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool)
+        {
+            string result = string.Empty;
+
+            foreach(var pair in pool.ToList().OrderBy(p => p.Key))
+            {
+                result += Environment.NewLine + Environment.NewLine +
+                    "\t" + $"PartitionId: { pair.Key }" + Environment.NewLine +
+                    "\t" + $"Status: { GetStatus(pair.Key) }" + Environment.NewLine +
+                    "\t" + $"Number of Active Instances: { pair.Value.ActiveInstances.Count }" + Environment.NewLine +
+                    "\t" + $"Estimated Eviction Time: { pair.Value.RemoveAfter }" + Environment.NewLine;
+            }
+
+            return result;
+        }
+
+        private string GetStatus(string partitionId)
+        {
+            int partitionIdAsInt = int.Parse(partitionId);
+
+            return test.SendingTasks.Values.Any(kp => kp.Key == partitionIdAsInt) ? "ACTIVE" : "INACTIVE"; 
         }
     }
 }
