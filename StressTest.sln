@@ -7,7 +7,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BasicPublishReadTest", "Con
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventProcessorTest", "BasicEventProcessorTest\EventProcessorTest.csproj", "{752B652B-BC01-4AD5-BB44-1DEB4F8220F9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventProducerTest", "EventProducerTest\EventProducerTest.csproj", "{049E5030-E9C4-46A0-9875-47717FECD75D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventProducerTest", "EventProducerTest\EventProducerTest.csproj", "{049E5030-E9C4-46A0-9875-47717FECD75D}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TransportProducerPoolTest", "PartitionPoolTest\TransportProducerPoolTest.csproj", "{72091843-F7FA-4D83-9844-FA5EE9F0519A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +29,10 @@ Global
 		{049E5030-E9C4-46A0-9875-47717FECD75D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{049E5030-E9C4-46A0-9875-47717FECD75D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{049E5030-E9C4-46A0-9875-47717FECD75D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{72091843-F7FA-4D83-9844-FA5EE9F0519A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{72091843-F7FA-4D83-9844-FA5EE9F0519A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{72091843-F7FA-4D83-9844-FA5EE9F0519A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{72091843-F7FA-4D83-9844-FA5EE9F0519A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
