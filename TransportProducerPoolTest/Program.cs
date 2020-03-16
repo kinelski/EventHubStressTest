@@ -18,27 +18,36 @@ namespace TransportProducerPoolTest
     {
         public async static Task Main(string[] args)
         {
-            int durationInHours = 72;
-
-            if (args.Length < 2)
+            try
             {
-                Console.WriteLine("There should be at least 2 arguments: connection string and event hub name.");
-                return;
+                int durationInHours = 72;
+
+                if (args.Length < 2)
+                {
+                    Console.WriteLine("There should be at least 2 arguments: connection string and event hub name.");
+                    return;
+                }
+
+                string connectionString = args[0];
+                string eventHubName = args[1];
+
+                Console.WriteLine($"Using connection string: '{ connectionString }'");
+                Console.WriteLine($"Using event hub name: '{ eventHubName }'");
+
+                if (args.Length > 2 && Int32.TryParse(args[2], out var result))
+                {
+                    durationInHours = result;
+                }
+
+                var test = new TransportProducerPoolTest();
+                await test.Run(connectionString, eventHubName, TimeSpan.FromHours(durationInHours));
+            }
+            catch (global::System.Exception e)
+            {
+                Console.WriteLine(e);
             }
 
-            string connectionString = args[0];
-            string eventHubName = args[1];
-
-            Console.WriteLine($"Using connection string: '{ connectionString }'");
-            Console.WriteLine($"Using event hub name: '{ eventHubName }'");
-
-            if (args.Length > 2 && Int32.TryParse(args[2], out var result))
-            {
-                durationInHours = result;
-            }
-
-            var test = new TransportProducerPoolTest();
-            await test.Run(connectionString, eventHubName, TimeSpan.FromHours(durationInHours));
+            Console.ReadLine();
         }
     }
 
@@ -67,8 +76,6 @@ namespace TransportProducerPoolTest
         {
             Console.WriteLine($"Setting up.");
 
-            DiagnosticListener.AllListeners.Subscribe(new TransportProducerPoolReceiver(this));
-
             consumersToConnect = 0;
             batchesCount = 0;
             sentEventsCount = 0;
@@ -86,26 +93,15 @@ namespace TransportProducerPoolTest
             {
                 Log = TextWriter.Synchronized(streamWriter);
 
+                DiagnosticListener.AllListeners.Subscribe(new TransportProducerPoolReceiver(this));
+
                 Task sendTask;
-                Dictionary<string, Task> receiveTasks = new Dictionary<string, Task>();
                 List<Task> reportTasks = new List<Task>();
 
                 CancellationToken timeoutToken = (new CancellationTokenSource(duration)).Token;
                 Exception capturedException;
                 var producerClient = new EventHubProducerClient(connectionString, eventHubName);
 
-                foreach (var partitionId in await producerClient.GetPartitionIdsAsync())
-                {
-                    receiveTasks[partitionId] = BackgroundReceive(connectionString, eventHubName, partitionId, timeoutToken);
-                    Interlocked.Increment(ref consumersToConnect);
-                }
-
-                while (consumersToConnect > 0)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(200));
-                }
-
-                await Task.Delay(5000);
                 sendTask = BackgroundSend(producerClient, timeoutToken);
 
                 Console.WriteLine($"Starting a { duration.ToString(@"dd\.hh\:mm\:ss") } run.\n");
@@ -133,39 +129,23 @@ namespace TransportProducerPoolTest
                         sendTask = BackgroundSend(producerClient, timeoutToken);
                     }
 
-                    foreach (var kvp in receiveTasks.ToList())
-                    {
-                        var receiveTask = kvp.Value;
-
-                        if (receiveTask.IsCompleted && !timeoutToken.IsCancellationRequested)
-                        {
-                            capturedException = null;
-
-                            try
-                            {
-                                await receiveTask;
-                            }
-                            catch (Exception ex)
-                            {
-                                capturedException = ex;
-                            }
-
-                            reportTasks.Add(ReportConsumerFailure(kvp.Key, capturedException));
-                            receiveTasks[kvp.Key] = BackgroundReceive(connectionString, eventHubName, kvp.Key, timeoutToken);
-                        }
-                    }
-
                     if (reportStatus.Elapsed > TimeSpan.FromMinutes(10))
                     {
-                        reportTasks.Add(ReportStatus());
+                        reportTasks.Add(ReportStatus(true));
                         reportStatus = Stopwatch.StartNew();
                     }
 
                     await Task.Delay(1000);
                 }
 
-                await sendTask;
-                await Task.WhenAll(receiveTasks.Values.ToList());
+                try
+                {
+                    await sendTask;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
 
                 foreach (var eventData in GetLostEvents())
                 {
@@ -255,60 +235,6 @@ namespace TransportProducerPoolTest
             }
         }
 
-        private async Task BackgroundReceive(string connectionString, string eventHubName, string partitionId, CancellationToken cancellationToken)
-        {
-            var reportTasks = new List<Task>();
-
-            EventPosition eventPosition;
-
-            if (LastReceivedSequenceNumber.TryGetValue(partitionId, out long sequenceNumber))
-            {
-                eventPosition = EventPosition.FromSequenceNumber(sequenceNumber, false);
-            }
-            else
-            {
-                eventPosition = EventPosition.Latest;
-            }
-
-            await using (var consumerClient = new EventHubConsumerClient("$Default", connectionString, eventHubName))
-            {
-                Interlocked.Decrement(ref consumersToConnect);
-
-                await foreach (var receivedEvent in consumerClient.ReadEventsFromPartitionAsync(partitionId, eventPosition, new ReadEventOptions { MaximumWaitTime = TimeSpan.FromSeconds(5) }))
-                {
-                    if (receivedEvent.Data != null)
-                    {
-                        var key = Encoding.UTF8.GetString(receivedEvent.Data.Body.ToArray());
-
-                        if (MissingEvents.TryRemove(key, out var expectedEvent))
-                        {
-                            if (HaveSameProperties(expectedEvent, receivedEvent.Data))
-                            {
-                                Interlocked.Increment(ref successfullyReceivedEventsCount);
-                            }
-                            else
-                            {
-                                reportTasks.Add(ReportCorruptedPropertiesEvent(partitionId, expectedEvent, receivedEvent.Data));
-                            }
-                        }
-                        else
-                        {
-                            reportTasks.Add(ReportCorruptedBodyEvent(partitionId, receivedEvent.Data));
-                        }
-
-                        LastReceivedSequenceNumber[partitionId] = receivedEvent.Data.SequenceNumber;
-                    }
-
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
-                }
-            }
-
-            await Task.WhenAll(reportTasks);
-        }
-
         private List<EventData> GetLostEvents()
         {
             var list = new List<EventData>();
@@ -395,17 +321,6 @@ namespace TransportProducerPoolTest
             return Log.WriteLineAsync(output);
         }
 
-        private Task ReportConsumerFailure(string partitionId, Exception ex)
-        {
-            Interlocked.Increment(ref consumerFailureCount);
-
-            var output =
-                $"The consumer associated with partition '{ partitionId }' has stopped unexpectedly." + Environment.NewLine +
-                GetPrintableException(ex);
-
-            return Log.WriteLineAsync(output);
-        }
-
         private Task ReportLostEvent(EventData eventData)
         {
             var output =
@@ -423,12 +338,9 @@ namespace TransportProducerPoolTest
                 $"Elapsed time: { elapsedTime.ToString(@"dd\.hh\:mm\:ss") }" + Environment.NewLine +
                 $"Batches sent: { batchesCount }" + Environment.NewLine +
                 $"Events sent: { sentEventsCount } " + Environment.NewLine +
-                $"Events successfully received: { successfullyReceivedEventsCount }" + Environment.NewLine +
-                $"Lost events: { GetLostEvents().Count }" + Environment.NewLine +
                 $"Corrupted body failure: { corruptedBodyFailureCount }" + Environment.NewLine +
                 $"Corrupted properties failure: { corruptedPropertiesFailureCount }" + Environment.NewLine +
                 $"Producer failure: { producerFailureCount }" + Environment.NewLine +
-                $"Consumer failure: { consumerFailureCount }" + Environment.NewLine +
                 $"Active partitions: { string.Join(", ", SendingTasks.Values.Select(kvp => kvp.Key)) }" + Environment.NewLine;
 
             Console.WriteLine(output);
