@@ -8,7 +8,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.EventHubs;
-using Azure.Messaging.EventHubs.Consumer;
 using Azure.Messaging.EventHubs.Core;
 using Azure.Messaging.EventHubs.Producer;
 
@@ -53,12 +52,9 @@ namespace TransportProducerPoolTest
 
     public class TransportProducerPoolTest
     {
-        private int consumersToConnect;
         private int batchesCount;
         private int sentEventsCount;
-        private int successfullyReceivedEventsCount;
         private int producerFailureCount;
-        private int consumerFailureCount;
         private int corruptedBodyFailureCount;
         private int corruptedPropertiesFailureCount;
 
@@ -66,8 +62,6 @@ namespace TransportProducerPoolTest
         private readonly string LogPath = Path.Combine(Environment.CurrentDirectory, "log.txt");
 
         private DateTimeOffset StartDate;
-        private ConcurrentDictionary<string, EventData> MissingEvents;
-        private ConcurrentDictionary<string, long> LastReceivedSequenceNumber;
         private TextWriter Log;
 
         public ConcurrentDictionary<string, KeyValuePair<int, Task>> SendingTasks;
@@ -76,17 +70,12 @@ namespace TransportProducerPoolTest
         {
             Console.WriteLine($"Setting up.");
 
-            consumersToConnect = 0;
             batchesCount = 0;
             sentEventsCount = 0;
-            successfullyReceivedEventsCount = 0;
             producerFailureCount = 0;
-            consumerFailureCount = 0;
             corruptedBodyFailureCount = 0;
             corruptedPropertiesFailureCount = 0;
 
-            MissingEvents = new ConcurrentDictionary<string, EventData>();
-            LastReceivedSequenceNumber = new ConcurrentDictionary<string, long>();
             SendingTasks = new ConcurrentDictionary<string, KeyValuePair<int, Task>>();
 
             using (var streamWriter = File.CreateText(LogPath))
@@ -145,11 +134,6 @@ namespace TransportProducerPoolTest
                 catch (Exception e)
                 {
                     Console.WriteLine(e);
-                }
-
-                foreach (var eventData in GetLostEvents())
-                {
-                    reportTasks.Add(ReportLostEvent(eventData));
                 }
 
                 reportTasks.Add(ReportStatus(true));
@@ -219,8 +203,6 @@ namespace TransportProducerPoolTest
                     eventData.Properties["BatchSize"] = batchSize;
                     eventData.Properties["Index"] = i;
 
-                    MissingEvents[key] = eventData;
-
                     batch.TryAdd(eventData);
                 }
 
@@ -233,40 +215,6 @@ namespace TransportProducerPoolTest
 
                 await Task.Delay(TimeSpan.FromSeconds(delayInSec));
             }
-        }
-
-        private List<EventData> GetLostEvents()
-        {
-            var list = new List<EventData>();
-
-            foreach (var eventData in MissingEvents.Values)
-            {
-                if (eventData.Properties.TryGetValue("CreatedAt", out var createdAt))
-                {
-                    if (DateTimeOffset.UtcNow.Subtract((DateTimeOffset)createdAt) > TimeSpan.FromMinutes(2))
-                    {
-                        list.Add(eventData);
-                    }
-                }
-            }
-
-            return list;
-        }
-
-        private bool HaveSameProperties(EventData e1, EventData e2) => e1.Properties.OrderBy(kvp => kvp.Key).SequenceEqual(e2.Properties.OrderBy(kvp => kvp.Key));
-
-        private string GetPrintableEvent(EventData eventData)
-        {
-            var str =
-                $"  Body: { Encoding.UTF8.GetString(eventData.Body.ToArray()) }" + Environment.NewLine +
-                $"  Properties:" + Environment.NewLine;
-
-            foreach (var property in eventData.Properties)
-            {
-                str += $"    { property.Key }: { property.Value }" + Environment.NewLine;
-            }
-
-            return str;
         }
 
         private string GetPrintableException(Exception ex)
@@ -285,31 +233,6 @@ namespace TransportProducerPoolTest
             }
         }
 
-        private Task ReportCorruptedBodyEvent(string partitionId, EventData eventData)
-        {
-            Interlocked.Increment(ref corruptedBodyFailureCount);
-
-            var output =
-                $"Partition '{ partitionId }' received an event that has not been sent (corrupted body)." + Environment.NewLine +
-                GetPrintableEvent(eventData);
-
-            return Log.WriteLineAsync(output);
-        }
-
-        private Task ReportCorruptedPropertiesEvent(string partitionId, EventData expectedEvent, EventData receivedEvent)
-        {
-            Interlocked.Increment(ref corruptedPropertiesFailureCount);
-
-            var output =
-                $"Partition '{ partitionId }' received an event with unexpected properties." + Environment.NewLine +
-                $"Expected:" + Environment.NewLine +
-                GetPrintableEvent(expectedEvent) +
-                $"Received:" +
-                GetPrintableEvent(receivedEvent);
-
-            return Log.WriteLineAsync(output);
-        }
-
         private Task ReportProducerFailure(Exception ex)
         {
             Interlocked.Increment(ref producerFailureCount);
@@ -317,15 +240,6 @@ namespace TransportProducerPoolTest
             var output =
                 $"The producer has stopped unexpectedly." + Environment.NewLine +
                 GetPrintableException(ex);
-
-            return Log.WriteLineAsync(output);
-        }
-
-        private Task ReportLostEvent(EventData eventData)
-        {
-            var output =
-                $"The following event was sent but it hasn't been received." + Environment.NewLine +
-                GetPrintableEvent(eventData);
 
             return Log.WriteLineAsync(output);
         }
