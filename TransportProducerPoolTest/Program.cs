@@ -129,7 +129,7 @@ namespace TransportProducerPoolTest
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine(e);
+                    reportTasks.Add(ReportProducerFailure(e));
                 }
 
                 reportTasks.Add(ReportStatus(true));
@@ -170,57 +170,57 @@ namespace TransportProducerPoolTest
             await Task.WhenAll(SendingTasks.Select(kvp => kvp.Value.Value));
         }
 
-        private async Task SendRandomBatch(EventHubProducerClient producer, CancellationToken cancellationToken, int partitionId)
+    private async Task SendRandomBatch(EventHubProducerClient producer, CancellationToken cancellationToken, int partitionId)
+    {
+        try
         {
-            try
-            {
-                int batchSize, delayInSec;
-                string key;
-                EventData eventData;
-                EventDataBatch batch;
+            int batchSize, delayInSec;
+            string key;
+            EventData eventData;
+            EventDataBatch batch;
 
-                while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var batchOptions = new CreateBatchOptions
                 {
-                    var batchOptions = new CreateBatchOptions
-                    {
-                        PartitionId = partitionId.ToString()
-                    };
+                    PartitionId = partitionId.ToString()
+                };
 
-                    batch = await producer.CreateBatchAsync(batchOptions);
+                batch = await producer.CreateBatchAsync(batchOptions);
 
-                    batchSize = RandomNumberGenerator.Next(20, 100);
+                batchSize = RandomNumberGenerator.Next(20, 100);
 
-                    for (int i = 0; i < batchSize; i++)
-                    {
-                        key = Guid.NewGuid().ToString();
+                for (int i = 0; i < batchSize; i++)
+                {
+                    key = Guid.NewGuid().ToString();
 
-                        eventData = new EventData(Encoding.UTF8.GetBytes(key));
+                    eventData = new EventData(Encoding.UTF8.GetBytes(key));
 
-                        eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
-                        eventData.Properties["BatchIndex"] = batchesCount;
-                        eventData.Properties["BatchSize"] = batchSize;
-                        eventData.Properties["Index"] = i;
+                    eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
+                    eventData.Properties["BatchIndex"] = batchesCount;
+                    eventData.Properties["BatchSize"] = batchSize;
+                    eventData.Properties["Index"] = i;
 
-                        batch.TryAdd(eventData);
-                    }
-
-                    await producer.SendAsync(batch);
-
-                    batchesCount++;
-                    sentEventsCount += batchSize;
-
-                    delayInSec = RandomNumberGenerator.Next(1, 10);
-
-                    await Task.Delay(TimeSpan.FromSeconds(delayInSec));
+                    batch.TryAdd(eventData);
                 }
-            }
-            catch (Exception e)
-            {
-                reportTasks.Add(ReportProducerFailure(e));
+
+                await producer.SendAsync(batch);
+
+                batchesCount++;
+                sentEventsCount += batchSize;
+
+                delayInSec = RandomNumberGenerator.Next(1, 10);
+
+                await Task.Delay(TimeSpan.FromSeconds(delayInSec));
             }
         }
+        catch (Exception e)
+        {
+            reportTasks.Add(ReportProducerFailure(e));
+        }
+    }
 
-        private string GetPrintableException(Exception ex)
+    private string GetPrintableException(Exception ex)
         {
             if (ex == null)
             {
