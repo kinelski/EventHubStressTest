@@ -60,6 +60,7 @@ namespace TransportProducerPoolTest
 
         private readonly Random RandomNumberGenerator = new Random(Environment.TickCount);
         private readonly string LogPath = Path.Combine(Environment.CurrentDirectory, "log.txt");
+        private List<Task> reportTasks = new List<Task>();
 
         private DateTimeOffset StartDate;
         private TextWriter Log;
@@ -85,7 +86,6 @@ namespace TransportProducerPoolTest
                 DiagnosticListener.AllListeners.Subscribe(new TransportProducerPoolReceiver(this));
 
                 Task sendTask;
-                List<Task> reportTasks = new List<Task>();
 
                 CancellationToken timeoutToken = (new CancellationTokenSource(duration)).Token;
                 Exception capturedException;
@@ -176,44 +176,51 @@ namespace TransportProducerPoolTest
 
         private async Task SendRandomBatch(EventHubProducerClient producer, CancellationToken cancellationToken, int partitionId)
         {
-            int batchSize, delayInSec;
-            string key;
-            EventData eventData;
-            EventDataBatch batch;
-
-            while (!cancellationToken.IsCancellationRequested)
+            try
             {
-                var batchOptions = new CreateBatchOptions
+                int batchSize, delayInSec;
+                string key;
+                EventData eventData;
+                EventDataBatch batch;
+
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    PartitionId = partitionId.ToString()
-                };
+                    var batchOptions = new CreateBatchOptions
+                    {
+                        PartitionId = partitionId.ToString()
+                    };
 
-                batch = await producer.CreateBatchAsync(batchOptions);
+                    batch = await producer.CreateBatchAsync(batchOptions);
 
-                batchSize = RandomNumberGenerator.Next(20, 100);
+                    batchSize = RandomNumberGenerator.Next(20, 100);
 
-                for (int i = 0; i < batchSize; i++)
-                {
-                    key = Guid.NewGuid().ToString();
+                    for (int i = 0; i < batchSize; i++)
+                    {
+                        key = Guid.NewGuid().ToString();
 
-                    eventData = new EventData(Encoding.UTF8.GetBytes(key));
+                        eventData = new EventData(Encoding.UTF8.GetBytes(key));
 
-                    eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
-                    eventData.Properties["BatchIndex"] = batchesCount;
-                    eventData.Properties["BatchSize"] = batchSize;
-                    eventData.Properties["Index"] = i;
+                        eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
+                        eventData.Properties["BatchIndex"] = batchesCount;
+                        eventData.Properties["BatchSize"] = batchSize;
+                        eventData.Properties["Index"] = i;
 
-                    batch.TryAdd(eventData);
+                        batch.TryAdd(eventData);
+                    }
+
+                    await producer.SendAsync(batch);
+
+                    batchesCount++;
+                    sentEventsCount += batchSize;
+
+                    delayInSec = RandomNumberGenerator.Next(1, 10);
+
+                    await Task.Delay(TimeSpan.FromSeconds(delayInSec));
                 }
-
-                await producer.SendAsync(batch);
-
-                batchesCount++;
-                sentEventsCount += batchSize;
-
-                delayInSec = RandomNumberGenerator.Next(1, 10);
-
-                await Task.Delay(TimeSpan.FromSeconds(delayInSec));
+            }
+            catch (Exception e)
+            {
+                reportTasks.Add(ReportProducerFailure(e));
             }
         }
 
