@@ -55,8 +55,6 @@ namespace TransportProducerPoolTest
         private int batchesCount;
         private int sentEventsCount;
         private int producerFailureCount;
-        private int corruptedBodyFailureCount;
-        private int corruptedPropertiesFailureCount;
 
         private readonly Random RandomNumberGenerator = new Random(Environment.TickCount);
         private readonly string LogPath = Path.Combine(Environment.CurrentDirectory, "log.txt");
@@ -74,8 +72,6 @@ namespace TransportProducerPoolTest
             batchesCount = 0;
             sentEventsCount = 0;
             producerFailureCount = 0;
-            corruptedBodyFailureCount = 0;
-            corruptedPropertiesFailureCount = 0;
 
             SendingTasks = new ConcurrentDictionary<string, KeyValuePair<int, Task>>();
 
@@ -259,8 +255,6 @@ namespace TransportProducerPoolTest
                 $"Elapsed time: { elapsedTime.ToString(@"dd\.hh\:mm\:ss") }" + Environment.NewLine +
                 $"Batches sent: { batchesCount }" + Environment.NewLine +
                 $"Events sent: { sentEventsCount } " + Environment.NewLine +
-                $"Corrupted body failure: { corruptedBodyFailureCount }" + Environment.NewLine +
-                $"Corrupted properties failure: { corruptedPropertiesFailureCount }" + Environment.NewLine +
                 $"Producer failure: { producerFailureCount }" + Environment.NewLine +
                 $"Active partitions: { string.Join(", ", SendingTasks.Values.Select(kvp => kvp.Key)) }" + Environment.NewLine;
 
