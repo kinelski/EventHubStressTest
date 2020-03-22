@@ -79,7 +79,7 @@ namespace TransportProducerPoolTest
             {
                 Log = TextWriter.Synchronized(streamWriter);
 
-                DiagnosticListener.AllListeners.Subscribe(new TransportProducerPoolReceiver(this));
+                DiagnosticListener.AllListeners.Subscribe(new TransportProducerPoolReceiver(this, reportTasks));
 
                 Task sendTaskProducer;
                 Task DefaultProducerSendingTask;
@@ -162,6 +162,8 @@ namespace TransportProducerPoolTest
                         reportTasks.Add(ReportStatus());
                         reportStatus = Stopwatch.StartNew();
                     }
+
+                    reportTasks.RemoveAll(t => t.IsCompleted);
 
                     await Task.Delay(1000);
                 }
@@ -310,10 +312,12 @@ namespace TransportProducerPoolTest
     class TransportProducerPoolReceiver : IObserver<DiagnosticListener>, IObserver<KeyValuePair<string, object>>
     {
         private readonly TransportProducerPoolTest test;
+        private readonly List<Task> reportTasks;
 
-        public TransportProducerPoolReceiver(TransportProducerPoolTest test)
+        public TransportProducerPoolReceiver(TransportProducerPoolTest test, List<Task> reportTasks)
         {
             this.test = test;
+            this.reportTasks = reportTasks;
         }
 
         public void OnCompleted()
@@ -330,45 +334,19 @@ namespace TransportProducerPoolTest
             {
                 if (value.Key == $"{ nameof(TransportProducerPool) }.{ nameof(TransportProducerPool.PoolItem) }.Start")
                 {
-                    string partitionId = Activity.Current.Tags.FirstOrDefault(t => t.Key == "PartitionId").Value;
-                    ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
-
-                    string message =
-                        $"A new PoolItem was created." + Environment.NewLine +
-                        $"The partition id is: { partitionId }" + Environment.NewLine +
-                        $"Actively sending to: { string.Join(", ", test.SendingTasks.Values.OrderBy(kvp => kvp.Key).Select(kvp => kvp.Key)) }" + Environment.NewLine +
-                        $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
-
-                    Console.WriteLine(message);
+                    reportTasks.Add(ReportPoolItemCreated(value));
                 }
                 else if (value.Key == $"{ nameof(TransportProducerPool) }.PoolItem.Stop")
                 {
-                    string message =
-                        $"A PoolItem was evicted." + Environment.NewLine +
-                        $"The partition id is: { value.Value }" + Environment.NewLine +
-                        $"Actively sending to: { string.Join(", ", test.SendingTasks.Values.Select(kvp => kvp.Key)) }" + Environment.NewLine;
-
-                    Console.WriteLine(message);
+                    reportTasks.Add(ReportPoolItemEvicted(value));
                 }
                 else if (value.Key == $"{ nameof(TransportProducerPool) }.CreateExpirationTimerCallback.Start")
                 {
-                    ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
-
-                    string message =
-                        $"The ExpirationTimerCallback started at { DateTimeOffset.UtcNow }." + Environment.NewLine +
-                        $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
-
-                    Console.WriteLine(message);
+                    reportTasks.Add(ReportExpirationCallBackStarted(value));
                 }
                 else if (value.Key == $"{ nameof(TransportProducerPool) }.CreateExpirationTimerCallback.Stop")
                 {
-                    ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
-
-                    string message =
-                        $"The ExpirationTimerCallback finished." + Environment.NewLine +
-                        $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
-
-                    Console.WriteLine(message);
+                    reportTasks.Add(ReportExpirationCallBackEnded(value));
                 }
             }
             catch (Exception e)
@@ -383,6 +361,60 @@ namespace TransportProducerPoolTest
             {
                 value.Subscribe(this);
             }
+        }
+
+        private Task ReportExpirationCallBackEnded(KeyValuePair<string, object> value)
+        {
+            ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
+
+            string message =
+                $"The ExpirationTimerCallback finished." + Environment.NewLine +
+                $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
+
+            Console.WriteLine(message);
+
+            return Task.CompletedTask;
+        }
+
+        private Task ReportExpirationCallBackStarted(KeyValuePair<string, object> value)
+        {
+            ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
+
+            string message =
+                $"The ExpirationTimerCallback started at { DateTimeOffset.UtcNow }." + Environment.NewLine +
+                $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
+
+            Console.WriteLine(message);
+
+            return Task.CompletedTask;
+        }
+
+        private Task ReportPoolItemEvicted(KeyValuePair<string, object> value)
+        {
+            string message =
+                $"A PoolItem was evicted." + Environment.NewLine +
+                $"The partition id is: { value.Value }" + Environment.NewLine +
+                $"Actively sending to: { string.Join(", ", test.SendingTasks.Values.Select(kvp => kvp.Key)) }" + Environment.NewLine;
+
+            Console.WriteLine(message);
+
+            return Task.CompletedTask;
+        }
+
+        private Task ReportPoolItemCreated(KeyValuePair<string, object> value)
+        {
+            string partitionId = Activity.Current.Tags.FirstOrDefault(t => t.Key == "PartitionId").Value;
+            ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool = value.Value as ConcurrentDictionary<string, TransportProducerPool.PoolItem>;
+
+            string message =
+                $"A new PoolItem was created." + Environment.NewLine +
+                $"The partition id is: { partitionId }" + Environment.NewLine +
+                $"Actively sending to: { string.Join(", ", test.SendingTasks.Values.OrderBy(kvp => kvp.Key).Select(kvp => kvp.Key)) }" + Environment.NewLine +
+                $"The pool snapshot is: { CreatePoolSnapshot(pool) }" + Environment.NewLine;
+
+            Console.WriteLine(message);
+
+            return Task.CompletedTask;
         }
 
         private string CreatePoolSnapshot(ConcurrentDictionary<string, TransportProducerPool.PoolItem> pool)
