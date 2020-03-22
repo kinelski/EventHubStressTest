@@ -63,7 +63,6 @@ namespace TransportProducerPoolTest
         private TextWriter Log;
 
         public ConcurrentDictionary<string, KeyValuePair<int, Task>> SendingTasks;
-        public Task DefaultProducerSendingTask;
 
         public async Task Run(string connectionString, string eventHubName, TimeSpan duration)
         {
@@ -83,6 +82,7 @@ namespace TransportProducerPoolTest
                 DiagnosticListener.AllListeners.Subscribe(new TransportProducerPoolReceiver(this));
 
                 Task sendTaskProducer;
+                Task DefaultProducerSendingTask;
 
                 CancellationToken timeoutToken = (new CancellationTokenSource(duration)).Token;
                 Exception capturedException;
