@@ -162,7 +162,7 @@ namespace TransportProducerPoolTest
 
                     if (reportStatus.Elapsed > TimeSpan.FromMinutes(1))
                     {
-                        reportTasks.Add(ReportStatus(true));
+                        reportTasks.Add(ReportStatus());
                         reportStatus = Stopwatch.StartNew();
                     }
 
