@@ -112,7 +112,6 @@ namespace TransportProducerPoolTest
                             capturedException = ex;
                         }
 
-                        producerFailureCount++;
                         reportTasks.Add(ReportProducerFailure(capturedException));
                         sendTaskProducer = ProduceSendingTasks(producerClient, timeoutToken);
                     }
@@ -130,7 +129,6 @@ namespace TransportProducerPoolTest
                             capturedException = ex;
                         }
 
-                        producerFailureCount++;
                         reportTasks.Add(ReportProducerFailure(capturedException));
                         DefaultProducerSendingTask = SendRandomBatch(producerClient, timeoutToken, timeoutToken, null);
                     }
@@ -152,7 +150,6 @@ namespace TransportProducerPoolTest
 
                             if(capturedException != null)
                             {
-                                producerFailureCount++;
                                 reportTasks.Add(ReportProducerFailure(capturedException));
                             }
 
@@ -175,7 +172,6 @@ namespace TransportProducerPoolTest
                 }
                 catch (Exception e)
                 {
-                    producerFailureCount++;
                     reportTasks.Add(ReportProducerFailure(e));
                 }
 
@@ -187,7 +183,6 @@ namespace TransportProducerPoolTest
                     }
                     catch (Exception ex)
                     {
-                        producerFailureCount++;
                         reportTasks.Add(ReportProducerFailure(ex));
                     }
 
