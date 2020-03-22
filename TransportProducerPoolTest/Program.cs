@@ -216,6 +216,7 @@ namespace TransportProducerPoolTest
         }
         catch (Exception e)
         {
+            producerFailureCount++;
             reportTasks.Add(ReportProducerFailure(e));
         }
     }
