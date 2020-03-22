@@ -170,72 +170,72 @@ namespace TransportProducerPoolTest
             await Task.WhenAll(SendingTasks.Select(kvp => kvp.Value.Value));
         }
 
-    private async Task SendRandomBatch(EventHubProducerClient producer, CancellationToken cancellationToken, int partitionId)
-    {
-        try
+        private async Task SendRandomBatch(EventHubProducerClient producer, CancellationToken cancellationToken, int partitionId)
         {
-            int batchSize, delayInSec;
-            string key;
-            EventData eventData;
-            EventDataBatch batch;
-
-            while (!cancellationToken.IsCancellationRequested)
+            try
             {
-                var batchOptions = new CreateBatchOptions
+                int batchSize, delayInSec;
+                string key;
+                EventData eventData;
+                EventDataBatch batch;
+
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    PartitionId = partitionId.ToString()
-                };
+                    var batchOptions = new CreateBatchOptions
+                    {
+                        PartitionId = partitionId.ToString()
+                    };
 
-                batch = await producer.CreateBatchAsync(batchOptions);
+                    batch = await producer.CreateBatchAsync(batchOptions);
 
-                batchSize = RandomNumberGenerator.Next(20, 100);
+                    batchSize = RandomNumberGenerator.Next(20, 100);
 
-                for (int i = 0; i < batchSize; i++)
-                {
-                    key = Guid.NewGuid().ToString();
+                    for (int i = 0; i < batchSize; i++)
+                    {
+                        key = Guid.NewGuid().ToString();
 
-                    eventData = new EventData(Encoding.UTF8.GetBytes(key));
+                        eventData = new EventData(Encoding.UTF8.GetBytes(key));
 
-                    eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
-                    eventData.Properties["BatchIndex"] = batchesCount;
-                    eventData.Properties["BatchSize"] = batchSize;
-                    eventData.Properties["Index"] = i;
+                        eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
+                        eventData.Properties["BatchIndex"] = batchesCount;
+                        eventData.Properties["BatchSize"] = batchSize;
+                        eventData.Properties["Index"] = i;
 
-                    batch.TryAdd(eventData);
+                        batch.TryAdd(eventData);
+                    }
+
+                    await producer.SendAsync(batch);
+
+                    batchesCount++;
+                    sentEventsCount += batchSize;
+
+                    delayInSec = RandomNumberGenerator.Next(1, 10);
+
+                    await Task.Delay(TimeSpan.FromSeconds(delayInSec));
                 }
-
-                await producer.SendAsync(batch);
-
-                batchesCount++;
-                sentEventsCount += batchSize;
-
-                delayInSec = RandomNumberGenerator.Next(1, 10);
-
-                await Task.Delay(TimeSpan.FromSeconds(delayInSec));
             }
-        }
-        catch (Exception e)
-        {
-            producerFailureCount++;
-            reportTasks.Add(ReportProducerFailure(e));
-        }
-    }
-
-    private string GetPrintableException(Exception ex)
-        {
-            if (ex == null)
+            catch (Exception e)
             {
-                return $"No expection has been thrown." + Environment.NewLine;
-            }
-            else
-            {
-                return
-                    $"Message:" + Environment.NewLine +
-                    ex.Message + Environment.NewLine +
-                    $"Stack trace:" + Environment.NewLine +
-                    ex.StackTrace + Environment.NewLine;
+                producerFailureCount++;
+                reportTasks.Add(ReportProducerFailure(e));
             }
         }
+
+        private string GetPrintableException(Exception ex)
+            {
+                if (ex == null)
+                {
+                    return $"No expection has been thrown." + Environment.NewLine;
+                }
+                else
+                {
+                    return
+                        $"Message:" + Environment.NewLine +
+                        ex.Message + Environment.NewLine +
+                        $"Stack trace:" + Environment.NewLine +
+                        ex.StackTrace + Environment.NewLine;
+                }
+            }
 
         private Task ReportProducerFailure(Exception ex)
         {
