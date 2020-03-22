@@ -58,12 +58,12 @@ namespace TransportProducerPoolTest
 
         private readonly Random RandomNumberGenerator = new Random(Environment.TickCount);
         private readonly string LogPath = Path.Combine(Environment.CurrentDirectory, "log.txt");
-        private List<Task> reportTasks = new List<Task>();
 
         private DateTimeOffset StartDate;
         private TextWriter Log;
 
         public ConcurrentDictionary<string, KeyValuePair<int, Task>> SendingTasks;
+        public Task DefaultProducerSendingTask;
 
         public async Task Run(string connectionString, string eventHubName, TimeSpan duration)
         {
@@ -74,6 +74,7 @@ namespace TransportProducerPoolTest
             producerFailureCount = 0;
 
             SendingTasks = new ConcurrentDictionary<string, KeyValuePair<int, Task>>();
+            List<Task> reportTasks = new List<Task>();
 
             using (var streamWriter = File.CreateText(LogPath))
             {
@@ -81,13 +82,14 @@ namespace TransportProducerPoolTest
 
                 DiagnosticListener.AllListeners.Subscribe(new TransportProducerPoolReceiver(this));
 
-                Task sendTask;
+                Task sendTaskProducer;
 
                 CancellationToken timeoutToken = (new CancellationTokenSource(duration)).Token;
                 Exception capturedException;
                 var producerClient = new EventHubProducerClient(connectionString, eventHubName);
 
-                sendTask = BackgroundSend(producerClient, timeoutToken);
+                DefaultProducerSendingTask = SendRandomBatch(producerClient, timeoutToken, timeoutToken, null);
+                sendTaskProducer = ProduceSendingTasks(producerClient, timeoutToken);
 
                 Console.WriteLine($"Starting a { duration.ToString(@"dd\.hh\:mm\:ss") } run.\n");
                 Console.WriteLine($"Log output can be found at '{ LogPath }'.\n");
@@ -97,24 +99,68 @@ namespace TransportProducerPoolTest
 
                 while (!timeoutToken.IsCancellationRequested)
                 {
-                    if (sendTask.IsCompleted && !timeoutToken.IsCancellationRequested)
+                    if (sendTaskProducer.IsCompleted && !timeoutToken.IsCancellationRequested)
                     {
                         capturedException = null;
 
                         try
                         {
-                            await sendTask;
+                            await sendTaskProducer;
                         }
                         catch (Exception ex)
                         {
                             capturedException = ex;
                         }
 
+                        producerFailureCount++;
                         reportTasks.Add(ReportProducerFailure(capturedException));
-                        sendTask = BackgroundSend(producerClient, timeoutToken);
+                        sendTaskProducer = ProduceSendingTasks(producerClient, timeoutToken);
                     }
 
-                    if (reportStatus.Elapsed > TimeSpan.FromMinutes(10))
+                    if(DefaultProducerSendingTask.IsCompleted && !timeoutToken.IsCancellationRequested)
+                    {
+                        capturedException = null;
+
+                        try
+                        {
+                            await DefaultProducerSendingTask;
+                        }
+                        catch (Exception ex)
+                        {
+                            capturedException = ex;
+                        }
+
+                        producerFailureCount++;
+                        reportTasks.Add(ReportProducerFailure(capturedException));
+                        DefaultProducerSendingTask = SendRandomBatch(producerClient, timeoutToken, timeoutToken, null);
+                    }
+
+                    foreach (var sendTask in SendingTasks.ToList())
+                    {
+                        if(sendTask.Value.Value.IsCompleted)
+                        {
+                            capturedException = null;
+
+                            try
+                            {
+                                await sendTask.Value.Value;
+                            }
+                            catch (Exception ex)
+                            {
+                                capturedException = ex;
+                            }
+
+                            if(capturedException != null)
+                            {
+                                producerFailureCount++;
+                                reportTasks.Add(ReportProducerFailure(capturedException));
+                            }
+
+                            SendingTasks.TryRemove(sendTask.Key, out _);
+                        }
+                    }
+
+                    if (reportStatus.Elapsed > TimeSpan.FromMinutes(1))
                     {
                         reportTasks.Add(ReportStatus(true));
                         reportStatus = Stopwatch.StartNew();
@@ -125,11 +171,27 @@ namespace TransportProducerPoolTest
 
                 try
                 {
-                    await sendTask;
+                    await DefaultProducerSendingTask;
                 }
                 catch (Exception e)
                 {
+                    producerFailureCount++;
                     reportTasks.Add(ReportProducerFailure(e));
+                }
+
+                foreach (var sendTask in SendingTasks.ToList())
+                {
+                    try
+                    {
+                        await sendTask.Value.Value;
+                    }
+                    catch (Exception ex)
+                    {
+                        producerFailureCount++;
+                        reportTasks.Add(ReportProducerFailure(ex));
+                    }
+
+                    SendingTasks.TryRemove(sendTask.Key, out _);
                 }
 
                 reportTasks.Add(ReportStatus(true));
@@ -140,11 +202,11 @@ namespace TransportProducerPoolTest
             }
         }
 
-        private async Task BackgroundSend(EventHubProducerClient producer, CancellationToken cancellationToken)
+        private async Task ProduceSendingTasks(EventHubProducerClient producer, CancellationToken timeoutToken)
         {
             int numberOfPartitions = (await producer.GetEventHubPropertiesAsync()).PartitionIds.Length;
 
-            while (!cancellationToken.IsCancellationRequested)
+            while (!timeoutToken.IsCancellationRequested)
             {
                 var id = Guid.NewGuid().ToString();
                 int partitionId = RandomNumberGenerator.Next(numberOfPartitions);
@@ -153,71 +215,54 @@ namespace TransportProducerPoolTest
 
                 CancellationToken sendTaskCancellationToken = new CancellationTokenSource(TimeSpan.FromMinutes(sendTaskDurationInMins)).Token;
 
-                Func<Task> sendingTask = async () =>
-                {
-                    await SendRandomBatch(producer, sendTaskCancellationToken, partitionId);
-
-                    SendingTasks.TryRemove(id, out _);
-                };
-
-                SendingTasks.TryAdd(id, new KeyValuePair<int, Task>(partitionId, sendingTask()));
+                SendingTasks.TryAdd(id, new KeyValuePair<int, Task>(partitionId, SendRandomBatch(producer, timeoutToken, sendTaskCancellationToken, partitionId)));
 
                 int delayInSec = RandomNumberGenerator.Next(120);
 
-                await Task.Delay(TimeSpan.FromSeconds(delayInSec));
+                await Task.Delay(TimeSpan.FromSeconds(delayInSec), timeoutToken);
             }
-
-            await Task.WhenAll(SendingTasks.Select(kvp => kvp.Value.Value));
         }
 
-        private async Task SendRandomBatch(EventHubProducerClient producer, CancellationToken cancellationToken, int partitionId)
+        private async Task SendRandomBatch(EventHubProducerClient producer, CancellationToken timeoutToken, CancellationToken sendTaskCancellationToken, int? partitionId)
         {
-            try
-            {
-                int batchSize, delayInSec;
-                string key;
-                EventData eventData;
-                EventDataBatch batch;
+            int batchSize, delayInSec;
+            string key;
+            EventData eventData;
+            EventDataBatch batch;
 
-                while (!cancellationToken.IsCancellationRequested)
+            while (!sendTaskCancellationToken.IsCancellationRequested && !timeoutToken.IsCancellationRequested)
+            {
+                var batchOptions = new CreateBatchOptions
                 {
-                    var batchOptions = new CreateBatchOptions
-                    {
-                        PartitionId = partitionId.ToString()
-                    };
+                    PartitionId = partitionId.ToString()
+                };
 
-                    batch = await producer.CreateBatchAsync(batchOptions);
+                batch = await producer.CreateBatchAsync(batchOptions);
 
-                    batchSize = RandomNumberGenerator.Next(20, 100);
+                batchSize = RandomNumberGenerator.Next(20, 100);
 
-                    for (int i = 0; i < batchSize; i++)
-                    {
-                        key = Guid.NewGuid().ToString();
+                for (int i = 0; i < batchSize; i++)
+                {
+                    key = Guid.NewGuid().ToString();
 
-                        eventData = new EventData(Encoding.UTF8.GetBytes(key));
+                    eventData = new EventData(Encoding.UTF8.GetBytes(key));
 
-                        eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
-                        eventData.Properties["BatchIndex"] = batchesCount;
-                        eventData.Properties["BatchSize"] = batchSize;
-                        eventData.Properties["Index"] = i;
+                    eventData.Properties["CreatedAt"] = DateTimeOffset.UtcNow;
+                    eventData.Properties["BatchIndex"] = batchesCount;
+                    eventData.Properties["BatchSize"] = batchSize;
+                    eventData.Properties["Index"] = i;
 
-                        batch.TryAdd(eventData);
-                    }
-
-                    await producer.SendAsync(batch);
-
-                    batchesCount++;
-                    sentEventsCount += batchSize;
-
-                    delayInSec = RandomNumberGenerator.Next(1, 10);
-
-                    await Task.Delay(TimeSpan.FromSeconds(delayInSec));
+                    batch.TryAdd(eventData);
                 }
-            }
-            catch (Exception e)
-            {
-                producerFailureCount++;
-                reportTasks.Add(ReportProducerFailure(e));
+
+                await producer.SendAsync(batch);
+
+                batchesCount++;
+                sentEventsCount += batchSize;
+
+                delayInSec = RandomNumberGenerator.Next(1, 10);
+
+                await Task.Delay(TimeSpan.FromSeconds(delayInSec));
             }
         }
 
