@@ -86,7 +86,7 @@ namespace TransportProducerPoolTest
 
                 CancellationToken timeoutToken = (new CancellationTokenSource(duration)).Token;
                 Exception capturedException;
-                var producerClient = new EventHubProducerClient(connectionString, eventHubName);
+                await using var producerClient = new EventHubProducerClient(connectionString, eventHubName);
 
                 DefaultProducerSendingTask = SendRandomBatch(producerClient, timeoutToken, timeoutToken, null);
                 sendTaskProducer = ProduceSendingTasks(producerClient, timeoutToken);
@@ -299,7 +299,7 @@ namespace TransportProducerPoolTest
                 $"Batches sent: { batchesCount }" + Environment.NewLine +
                 $"Events sent: { sentEventsCount } " + Environment.NewLine +
                 $"Producer failure: { producerFailureCount }" + Environment.NewLine +
-                $"Active partitions: { string.Join(", ", SendingTasks.Values.Select(kvp => kvp.Key)) }" + Environment.NewLine;
+                $"Active partitions: { string.Join(", ", SendingTasks.Values.Select(kvp => kvp.Key).OrderBy(key => key)) }" + Environment.NewLine;
 
             Console.WriteLine(output);
 
