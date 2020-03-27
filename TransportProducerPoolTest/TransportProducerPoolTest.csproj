@@ -8,7 +8,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\..\..\alberto-azure-sdk-for-net\sdk\eventhub\Azure.Messaging.EventHubs\src\Azure.Messaging.EventHubs.csproj" />
+		<PackageReference Include="Azure.Messaging.EventHubs" Version="5.0.0-dev.*"></PackageReference>
 	</ItemGroup>
 	
 </Project>
