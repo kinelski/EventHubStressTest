@@ -11,8 +11,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventProducerTest", "EventP
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TransportProducerPoolTest", "TransportProducerPoolTest\TransportProducerPoolTest.csproj", "{78D00A41-452F-4A24-98C4-4ACCCE435DD3}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Azure.Messaging.EventHubs", "..\..\alberto-azure-sdk-for-net\sdk\eventhub\Azure.Messaging.EventHubs\src\Azure.Messaging.EventHubs.csproj", "{8F44C0D3-B2A0-43E7-89FE-01238B93181E}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -35,10 +33,6 @@ Global
 		{78D00A41-452F-4A24-98C4-4ACCCE435DD3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{78D00A41-452F-4A24-98C4-4ACCCE435DD3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{78D00A41-452F-4A24-98C4-4ACCCE435DD3}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8F44C0D3-B2A0-43E7-89FE-01238B93181E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8F44C0D3-B2A0-43E7-89FE-01238B93181E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8F44C0D3-B2A0-43E7-89FE-01238B93181E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8F44C0D3-B2A0-43E7-89FE-01238B93181E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
