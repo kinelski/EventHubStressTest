@@ -3,11 +3,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Azure.Messaging.EventHubs;
-using Azure.Messaging.EventHubs.Processor;
 
 namespace EventProducerTest
 {
@@ -32,6 +29,7 @@ namespace EventProducerTest
         {
             IsRunning = true;
 
+            using var process = Process.GetCurrentProcess();
             using var publishCancellationSource = new CancellationTokenSource();
 
             var publishingTasks = default(IEnumerable<Task>);
@@ -50,7 +48,9 @@ namespace EventProducerTest
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
+                    Metrics.UpdateEnvironmentStatistics(process);
                     Interlocked.Exchange(ref Metrics.RunDurationMilliseconds, runDuration.Elapsed.TotalMilliseconds);
+
                     await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken).ConfigureAwait(false);
                 }
             }

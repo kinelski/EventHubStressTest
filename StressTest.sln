@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29326.143
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BasicPublishReadTest", "ConsoleApp1\BasicPublishReadTest.csproj", "{971F4376-9474-494F-9B89-A79AC7DF5E37}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BasicPublishReadTest", "BasicPublishReadTest\BasicPublishReadTest.csproj", "{971F4376-9474-494F-9B89-A79AC7DF5E37}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventProcessorTest", "BasicEventProcessorTest\EventProcessorTest.csproj", "{752B652B-BC01-4AD5-BB44-1DEB4F8220F9}"
 EndProject

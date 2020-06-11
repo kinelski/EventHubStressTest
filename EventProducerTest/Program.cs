@@ -16,6 +16,8 @@ namespace EventProducerTest
 
         public static async Task Main(string[] args)
         {
+
+
             var runArgs = ParseAndPromptForArguments(args);
             var runDuration = DefaultRunDuration;
             var errorLogPath = DefaultErrorLogPath;
@@ -128,16 +130,24 @@ namespace EventProducerTest
 
             var runDurationMilliseconds = Interlocked.CompareExchange(ref metrics.RunDurationMilliseconds, 0.0, 0.0);
             var currentDuration = TimeSpan.FromMilliseconds(runDurationMilliseconds > 0.0 ? runDurationMilliseconds : 1);
+            var averageMemory =  metrics.TotalMemoryUsed / metrics.MemorySamples;
 
             message.AppendLine("Run Metrics");
             message.AppendLine("=========================");
             message.AppendLine($"\tRun Duration:\t\t\t{ runDuration.ToString(@"dd\.hh\:mm\:ss") }");
             message.AppendLine($"\tElapsed:\t\t\t{ currentDuration.ToString(@"dd\.hh\:mm\:ss") } ({ (currentDuration / runDuration).ToString("P", CultureInfo.InvariantCulture) })");
+            message.AppendLine($"\tTotal Processor Time:\t\t{ metrics.TotalProcessorTime.ToString(@"dd\.hh\:mm\:ss") }");
+            message.AppendLine($"\tAverage Memory Use:\t\t{ FormatBytes(averageMemory) }");
+            message.AppendLine($"\tCurrent Memory Use:\t\t{ FormatBytes(metrics.MemoryUsed) }");
+            message.AppendLine($"\tPeak Memory Use:\t\t{ FormatBytes(metrics.PeakPhysicalMemory) }");
+            message.AppendLine($"\tGC Gen 0 Collections:\t\t{ metrics.GenerationZeroCollections.ToString("n0") }");
+            message.AppendLine($"\tGC Gen 1 Collections:\t\t{ metrics.GenerationOneCollections.ToString("n0") }");
+            message.AppendLine($"\tGC Gen 2 Collections:\t\t{ metrics.GenerationTwoCollections.ToString("n0") }");
             message.AppendLine($"\tNumber of Publishers:\t\t{ configuration.ProducerCount.ToString("n0") }");
             message.AppendLine($"\tConcurrent Sends per Publisher:\t{ configuration.ConcurrentSends.ToString("n0") }");
             message.AppendLine($"\tTarget Batch Size:\t\t{ configuration.PublishBatchSize.ToString("n0") } (events)");
             message.AppendLine($"\tMinimum Message Size:\t\t{ configuration.PublishingBodyMinBytes.ToString("n0") } (bytes)");
-            message.AppendLine($"\tLarge Message Factor:\t\t{ configuration.LargeMessageRandomFactor.ToString("P", CultureInfo.InvariantCulture) }");
+            message.AppendLine($"\tLarge Message Factor:\t\t{ configuration.LargeMessageRandomFactorPercent.ToString("P", CultureInfo.InvariantCulture) }");
             message.AppendLine();
 
             // Publish and read pairing

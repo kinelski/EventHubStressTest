@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,7 +12,6 @@ namespace EventProcessorTest
     internal class Publisher
     {
         private static readonly ThreadLocal<Random> RandomNumberGenerator = new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref randomSeed)), false);
-
         private static int randomSeed = Environment.TickCount;
 
         private long currentSequence = 0;
@@ -60,18 +60,29 @@ namespace EventProcessorTest
 
                             var partitions = await producer.GetPartitionIdsAsync(cancellationToken).ConfigureAwait(false);
                             var selectedPartition = partitions[RandomNumberGenerator.Value.Next(0, partitions.Length)];
+                            var batchEvents = new List<EventData>();
 
                             // Create the batch and generate a set of random events, keeping only those that were able to fit into the batch.
-                            // Because there is a side-effect of TryAdd in the statement, ensure that ToList is called to materialize the set
-                            // or the batch will be empty at send.
 
                             using var batch = await producer.CreateBatchAsync(new CreateBatchOptions { PartitionId = selectedPartition }).ConfigureAwait(false);
 
-                            var batchEvents = Enumerable
-                                .Range(0, Configuration.PublishBatchSize)
-                                .Select(_ => GenerateEvent(batch.MaximumSizeInBytes, selectedPartition))
-                                .Where(item => batch.TryAdd(item.Data))
-                                .ToList();
+                            var events = EventGenerator.CreateEvents(
+                                Configuration.PublishBatchSize,
+                                Configuration.LargeMessageRandomFactorPercent,
+                                Configuration.PublishingBodyMinBytes,
+                                Configuration.PublishingBodyRegularMaxBytes,
+                                currentSequence,
+                                selectedPartition);
+
+                            foreach (var currentEvent in events)
+                            {
+                                if (!batch.TryAdd(currentEvent))
+                                {
+                                    break;
+                                }
+
+                                batchEvents.Add(currentEvent);
+                            }
 
                             // Publish the events and report them, capturing any failures specific to the send operation.
 
@@ -83,7 +94,8 @@ namespace EventProcessorTest
 
                                     foreach (var batchEvent in batchEvents)
                                     {
-                                        PublishedEvents.AddOrUpdate(batchEvent.Id, _ => batchEvent.Data, (k, v) => batchEvent.Data);
+                                        batchEvent.Properties.TryGetValue(EventGenerator.IdPropertyName, out var id);
+                                        PublishedEvents.AddOrUpdate(id.ToString(), _ => batchEvent, (k, v) => batchEvent);
                                     }
 
                                     Interlocked.Add(ref Metrics.EventsPublished, batch.Count);
@@ -134,36 +146,6 @@ namespace EventProcessorTest
                     ErrorsObserved.Add(ex);
                 }
             }
-        }
-
-        private (string Id, EventData Data) GenerateEvent(long maxMessageSize,
-                                                          string partition)
-        {
-            // Allow a chance to generate a large size event, otherwise, randomly
-            // size within the normal range.
-
-            long bodySize;
-
-            if (RandomNumberGenerator.Value.NextDouble() < Configuration.LargeMessageRandomFactor)
-            {
-                bodySize = (Configuration.PublishingBodyMinBytes + (long)(RandomNumberGenerator.Value.NextDouble() * (maxMessageSize - Configuration.PublishingBodyMinBytes)));
-            }
-            else
-            {
-                bodySize = RandomNumberGenerator.Value.Next(Configuration.PublishingBodyMinBytes, Configuration.PublishingBodyRegularMaxBytes);
-            }
-
-            var id = Guid.NewGuid().ToString();
-            var body = new byte[bodySize];
-            RandomNumberGenerator.Value.NextBytes(body);
-
-            var eventData = new EventData(body);
-            eventData.Properties[Property.Id] = id;
-            eventData.Properties[Property.Partition] = partition;
-            eventData.Properties[Property.Sequence] = Interlocked.Increment(ref currentSequence);
-            eventData.Properties[Property.PublishDate] = DateTimeOffset.UtcNow;
-
-            return (id, eventData);
         }
     }
 }

@@ -12,10 +12,12 @@ namespace EventProcessorTest
     {
         private static readonly TimeSpan DefaultProcessReportInterval = TimeSpan.FromSeconds(45);
         private static readonly TimeSpan DefaultRunDuration = TimeSpan.FromHours(72);
-        private static readonly string DefaultErrorLogPath = Path.Combine(Environment.CurrentDirectory, $"processor-test-errors-{ DateTime.Now.ToString("yyyy-MM-dd_hh-mm-ss") }.log");
+        private static readonly string DefaultErrorLogPath = Path.Combine(Environment.CurrentDirectory, $"processor-test-errors-{ DateTime.Now:yyyy-MM-dd_hh-mm-ss }.log");
 
         public static async Task Main(string[] args)
         {
+
+
             var runArgs = ParseAndPromptForArguments(args);
             var runDuration = DefaultRunDuration;
             var errorLogPath = DefaultErrorLogPath;
@@ -127,11 +129,20 @@ namespace EventProcessorTest
 
             var runDurationMilliseconds = Interlocked.CompareExchange(ref metrics.RunDurationMilliseconds, 0.0, 0.0);
             var currentDuration = TimeSpan.FromMilliseconds(runDurationMilliseconds > 0.0 ? runDurationMilliseconds : 1);
+            var averageMemory =  metrics.TotalMemoryUsed / metrics.MemorySamples;
 
             message.AppendLine("Run Metrics");
             message.AppendLine("=========================");
             message.AppendLine($"\tRun Duration:\t\t\t{ runDuration.ToString(@"dd\.hh\:mm\:ss") }");
             message.AppendLine($"\tElapsed:\t\t\t{ currentDuration.ToString(@"dd\.hh\:mm\:ss") } ({ (currentDuration / runDuration).ToString("P", CultureInfo.InvariantCulture) })");
+            message.AppendLine($"\tTotal Processor Time:\t\t{ metrics.TotalProcessorTime.ToString(@"dd\.hh\:mm\:ss") }");
+            message.AppendLine($"\tAverage Memory Use:\t\t{ FormatBytes(averageMemory) }");
+            message.AppendLine($"\tCurrent Memory Use:\t\t{ FormatBytes(metrics.MemoryUsed) }");
+            message.AppendLine($"\tPeak Memory Use:\t\t{ FormatBytes(metrics.PeakPhysicalMemory) }");
+            message.AppendLine($"\tGC Gen 0 Collections:\t\t{ metrics.GenerationZeroCollections.ToString("n0") }");
+            message.AppendLine($"\tGC Gen 1 Collections:\t\t{ metrics.GenerationOneCollections.ToString("n0") }");
+            message.AppendLine($"\tGC Gen 2 Collections:\t\t{ metrics.GenerationTwoCollections.ToString("n0") }");
+
             message.AppendLine();
 
             // Publish and read pairing
@@ -161,14 +172,14 @@ namespace EventProcessorTest
             message.AppendLine("Event Validation");
             message.AppendLine("=========================");
 
+            metric = Interlocked.Read(ref metrics.DuplicateEventsDiscarded);
+            message.AppendLine($"\tDuplicate Events Discarded:\t{ metric.ToString("n0") }");
+
             metric = Interlocked.Read(ref metrics.EventsNotReceived);
             message.AppendLine($"\tEvents Not Received:\t\t{ metric.ToString("n0") } ({ (metric / published).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.UnknownEventsProcessed);
-            message.AppendLine($"\tUnexpected Events Received:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.DuplicateEventsDiscarded);
-            message.AppendLine($"\tDuplicate Events Discarded:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
+            message.AppendLine($"\tUnexpected Events Received:\t{ metric.ToString("n0") } ({ (metric / serviceOps).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.InvalidBodies);
             message.AppendLine($"\tEvents with Invalid Bodies:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
@@ -231,8 +242,8 @@ namespace EventProcessorTest
             return writer.WriteLineAsync(message.ToString());
         }
 
-         private static async Task ReportErrorsAsync(TextWriter writer,
-                                                     ConcurrentBag<Exception> exceptions)
+        private static async Task ReportErrorsAsync(TextWriter writer,
+                                                    ConcurrentBag<Exception> exceptions)
         {
             Exception currentException;
 
@@ -245,6 +256,26 @@ namespace EventProcessorTest
             }
 
             writer.Flush();
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            const long scale = 1024;
+
+            var orders = new string[]{ "TB", "MB", "KB", "bytes" };
+            var max = (long)Math.Pow(scale, (orders.Length - 1));
+
+            foreach (string order in orders)
+            {
+                if (bytes > max)
+                {
+                    return string.Format("{0:n2} {1}", Decimal.Divide(bytes, max), order);
+                }
+
+                max /= scale;
+            }
+
+            return "0 bytes";
         }
 
         private static CommandLineArguments ParseAndPromptForArguments(string[] commandLineArgs)

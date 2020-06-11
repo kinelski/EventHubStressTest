@@ -16,7 +16,7 @@ namespace EventProcessorTest
         public int PublishBatchSize = 50;
         public int PublishingBodyMinBytes = 10;
         public int PublishingBodyRegularMaxBytes = 757760;
-        public double LargeMessageRandomFactor = 0.15;
+        public int LargeMessageRandomFactorPercent = 30;
         public TimeSpan SendTimeout = TimeSpan.FromMinutes(3);
         public TimeSpan? PublishingDelay = TimeSpan.FromMilliseconds(15);
 

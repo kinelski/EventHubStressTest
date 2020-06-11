@@ -134,11 +134,24 @@ namespace EventProducerTest
 
             using var batch = await producer.CreateBatchAsync().ConfigureAwait(false);
 
-            var batchEvents = Enumerable
-                .Range(0, Configuration.PublishBatchSize)
-                .Select(_ => GenerateEvent(batch.MaximumSizeInBytes))
-                .Where(item => batch.TryAdd(item))
-                .ToList();
+            var batchEvents = new List<EventData>();
+
+            var events = EventGenerator.CreateEvents(
+                Configuration.PublishBatchSize,
+                Configuration.LargeMessageRandomFactorPercent,
+                Configuration.PublishingBodyMinBytes,
+                Configuration.PublishingBodyRegularMaxBytes,
+                currentSequence);
+
+            foreach (var currentEvent in events)
+            {
+                if (!batch.TryAdd(currentEvent))
+                {
+                    break;
+                }
+
+                batchEvents.Add(currentEvent);
+            }
 
             // Publish the events and report them, capturing any failures specific to the send operation.
 
@@ -186,34 +199,6 @@ namespace EventProducerTest
                 Interlocked.Increment(ref Metrics.GeneralExceptions);
                 ErrorsObserved.Add(ex);
             }
-        }
-
-        private EventData GenerateEvent(long maxMessageSize)
-        {
-            // Allow a chance to generate a large size event, otherwise, randomly
-            // size within the normal range.
-
-            long bodySize;
-
-            if (RandomNumberGenerator.Value.NextDouble() < Configuration.LargeMessageRandomFactor)
-            {
-                bodySize = (Configuration.PublishingBodyMinBytes + (long)(RandomNumberGenerator.Value.NextDouble() * (maxMessageSize - Configuration.PublishingBodyMinBytes)));
-            }
-            else
-            {
-                maxMessageSize = (Configuration.PublishingBodyRegularMaxBytes / Configuration.PublishBatchSize);
-                bodySize = RandomNumberGenerator.Value.Next(Configuration.PublishingBodyMinBytes, (int)maxMessageSize);
-            }
-
-            var body = new byte[bodySize];
-            RandomNumberGenerator.Value.NextBytes(body);
-
-            var eventData = new EventData(body);
-            eventData.Properties[Property.Id] = Guid.NewGuid().ToString();
-            eventData.Properties[Property.Sequence] = Interlocked.Increment(ref currentSequence);
-            eventData.Properties[Property.PublishDate] = DateTimeOffset.UtcNow;
-
-            return eventData;
         }
     }
 }
