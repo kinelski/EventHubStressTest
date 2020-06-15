@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.Tracing;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure.Core.Diagnostics;
 
 namespace EventProducerTest
 {
@@ -16,7 +19,15 @@ namespace EventProducerTest
 
         public static async Task Main(string[] args)
         {
+            if (args.Length == 0)
+            {
+                args = new[] { "./.env" };
+            }
 
+            if (args.Length == 1)
+            {
+                args = ArgumentFileReader.Read(args[0])?.ToArray() ?? Array.Empty<string>();
+            }
 
             var runArgs = ParseAndPromptForArguments(args);
             var runDuration = DefaultRunDuration;
@@ -37,6 +48,7 @@ namespace EventProducerTest
             using var cancellationSource = new CancellationTokenSource();
             using var errorWriter = new StreamWriter(File.Open(errorLogPath, FileMode.Create, FileAccess.Write, FileShare.Read));
             using var metricsWriter = Console.Out;
+            using var azureEventListener = ListenForEventSourceErrors(errorWriter);
 
             try
             {
@@ -257,6 +269,26 @@ namespace EventProducerTest
             }
 
             writer.Flush();
+        }
+
+        private static AzureEventSourceListener ListenForEventSourceErrors(TextWriter writer)
+        {
+            void processLogEvent(EventWrittenEventArgs args, string message)
+            {
+                try
+                {
+                    writer.WriteLine
+                    (
+                        $"[ { args.EventSource } :: { args.EventName } ]{Environment.NewLine}{ message ?? "No message available" }{ Environment.NewLine }{ "No stack trace available" }{ Environment.NewLine }"
+                    );
+                }
+                catch
+                {
+                    // This is likely due to a race condition while ending a run.  Ignore.
+                }
+            }
+
+            return new AzureEventSourceListener(processLogEvent, EventLevel.Error);
         }
 
         private static CommandLineArguments ParseAndPromptForArguments(string[] commandLineArgs)

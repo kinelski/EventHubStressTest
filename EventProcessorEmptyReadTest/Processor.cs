@@ -7,7 +7,7 @@ using Azure.Messaging.EventHubs.Consumer;
 using Azure.Messaging.EventHubs.Processor;
 using Azure.Storage.Blobs;
 
-namespace EventProcessorTest
+namespace EventProcessorEmptyReadTest
 {
     internal class Processor
     {
@@ -40,6 +40,8 @@ namespace EventProcessorTest
             {
                 var options = new EventProcessorClientOptions
                 {
+                    MaximumWaitTime = Configuration.ReadWaitTime,
+
                     RetryOptions = new EventHubsRetryOptions
                     {
                         TryTimeout = Configuration.ReadTimeout
@@ -78,10 +80,9 @@ namespace EventProcessorTest
                 }
                 finally
                 {
-                    // Because publishing was canceled at the same time as the processor,
-                    // wait a short bit to allow for time processing the newly published events.
+                    // Wait a short bit to allow for time processing the newly published events.
 
-                    await Task.Delay(TimeSpan.FromMinutes(5)).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromMinutes(2)).ConfigureAwait(false);
 
                     // Constrain stopping the processor, just in case it has issues.  It should not be allowed
                     // to hang, it should be abandoned so that processing can restart.

@@ -4,3 +4,4 @@
 **/obj
 log.txt
 **/launchSettings.json
+**/Directory.Build.targets

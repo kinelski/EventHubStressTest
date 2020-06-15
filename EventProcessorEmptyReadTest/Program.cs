@@ -9,7 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure.Core.Diagnostics;
 
-namespace EventProcessorTest
+namespace EventProcessorEmptyReadTest
 {
     public static class Program
     {
@@ -159,61 +159,28 @@ namespace EventProcessorTest
 
             // Publish and read pairing
 
-            message.AppendLine("Publishing and Receiving");
+            message.AppendLine("Processing");
             message.AppendLine("=========================");
 
             var serviceOps = (double)Interlocked.Read(ref metrics.TotalServiceOperations);
             message.AppendLine($"\tService Operations:\t\t{ serviceOps.ToString("n0") }");
             serviceOps = (serviceOps > 0) ? serviceOps : 0.001;
 
-            var published = (double)Interlocked.Read(ref metrics.EventsPublished);
-            message.AppendLine($"\tEvents Published:\t\t{ published.ToString("n0") }");
-            published = (published > 0) ? published : 0.001;
-
-            var read = (double)Interlocked.Read(ref metrics.EventsRead);
-            message.AppendLine($"\tEvents Read:\t\t\t{ read.ToString("n0") } ({ (read / published).ToString("P", CultureInfo.InvariantCulture) })");
-            read = (read > 0) ? read : 0.001;
-
-            metric = Interlocked.Read(ref metrics.EventsProcessed);
-            message.AppendLine($"\tEvents Processed:\t\t{ read.ToString("n0") } ({ (metric / published).ToString("P", CultureInfo.InvariantCulture) })");
+            metric = Interlocked.Read(ref metrics.EventHandlerCalls);
+            message.AppendLine($"\tEvent Handler Calls:\t\t{ metric.ToString("n0") }");
 
             message.AppendLine();
 
             // Validation issues
 
-            message.AppendLine("Event Validation");
-            message.AppendLine("=========================");
+            message.AppendLine("Unexpected Events and Client Health");
+            message.AppendLine("===================================");
 
-            metric = Interlocked.Read(ref metrics.DuplicateEventsDiscarded);
-            message.AppendLine($"\tDuplicate Events Discarded:\t{ metric.ToString("n0") }");
-
-            metric = Interlocked.Read(ref metrics.EventsNotReceived);
-            message.AppendLine($"\tEvents Not Received:\t\t{ metric.ToString("n0") } ({ (metric / published).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.UnknownEventsProcessed);
-            message.AppendLine($"\tUnexpected Events Received:\t{ metric.ToString("n0") } ({ (metric / serviceOps).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.InvalidBodies);
-            message.AppendLine($"\tEvents with Invalid Bodies:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.InvalidProperties);
-            message.AppendLine($"\tEvents with Invalid Properties:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
-            metric = Interlocked.Read(ref metrics.EventsFromWrongPartition);
-            message.AppendLine($"\tEvents From a Wrong Partition:\t{ metric.ToString("n0") } ({ (metric / read).ToString("P", CultureInfo.InvariantCulture) })");
-
-            message.AppendLine();
-
-            // Client health
-
-            message.AppendLine("Client Health");
-            message.AppendLine("=========================");
+            metric = Interlocked.Read(ref metrics.EventsRead);
+            message.AppendLine($"\tUnknown Events Read:\t\t{ metric.ToString("n0") }");
 
             metric = Interlocked.Read(ref metrics.ProcessorRestarted);
             message.AppendLine($"\tProcessor Restarts:\t\t{ metric }");
-
-            metric = Interlocked.Read(ref metrics.ProducerRestarted);
-            message.AppendLine($"\tProducer Restarts:\t\t{ metric }");
 
             message.AppendLine();
 
@@ -225,9 +192,6 @@ namespace EventProcessorTest
             var totalExceptions = (double)Interlocked.Read(ref metrics.TotalExceptions);
             message.AppendLine($"\tExceptions for All Operations:\t{ totalExceptions.ToString("n0") } ({ (totalExceptions / serviceOps).ToString("P", CultureInfo.InvariantCulture) })");
             totalExceptions = (totalExceptions > 0) ? totalExceptions : 0.001;
-
-            metric = Interlocked.Read(ref metrics.SendExceptions);
-            message.AppendLine($"\tException During Send:\t\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");
 
             metric = Interlocked.Read(ref metrics.ProcessingExceptions);
             message.AppendLine($"\tException During Processing:\t{ metric.ToString("n0") } ({ (metric / totalExceptions).ToString("P", CultureInfo.InvariantCulture) })");

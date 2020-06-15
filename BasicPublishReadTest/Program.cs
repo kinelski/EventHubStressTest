@@ -18,6 +18,16 @@ namespace Azure.Messaging.EventHubs.Samples
         {
             int durationInHours = 72;
 
+            if (args.Length == 0)
+            {
+                args = new[] { "./.env" };
+            }
+
+            if (args.Length == 1)
+            {
+                args = ArgumentFileReader.Read(args[0])?.ToArray() ?? Array.Empty<string>();
+            }
+
             if (args.Length < 2)
             {
                 Console.WriteLine("There should be at least 2 arguments: connection string and event hub name.");

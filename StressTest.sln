@@ -11,6 +11,16 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventProducerTest", "EventP
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TransportProducerPoolTest", "TransportProducerPoolTest\TransportProducerPoolTest.csproj", "{78D00A41-452F-4A24-98C4-4ACCCE435DD3}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventProcessorEmptyReadTest", "EventProcessorEmptyReadTest\EventProcessorEmptyReadTest.csproj", "{868A76C9-9A7C-46D7-984A-2491D6EF976B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Shared", "Shared", "{703BBD8F-1A57-438C-A08C-A76F8B1F4C2C}"
+	ProjectSection(SolutionItems) = preProject
+		Shared\ArgumentFileReader.cs = Shared\ArgumentFileReader.cs
+		Shared\AzureEventSourceListener.cs = Shared\AzureEventSourceListener.cs
+		Shared\EventDataExtensions.cs = Shared\EventDataExtensions.cs
+		Shared\EventGenerator.cs = Shared\EventGenerator.cs
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +43,10 @@ Global
 		{78D00A41-452F-4A24-98C4-4ACCCE435DD3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{78D00A41-452F-4A24-98C4-4ACCCE435DD3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{78D00A41-452F-4A24-98C4-4ACCCE435DD3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{868A76C9-9A7C-46D7-984A-2491D6EF976B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{868A76C9-9A7C-46D7-984A-2491D6EF976B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{868A76C9-9A7C-46D7-984A-2491D6EF976B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{868A76C9-9A7C-46D7-984A-2491D6EF976B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
