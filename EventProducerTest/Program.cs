@@ -159,7 +159,7 @@ namespace EventProducerTest
             message.AppendLine($"\tConcurrent Sends per Publisher:\t{ configuration.ConcurrentSends.ToString("n0") }");
             message.AppendLine($"\tTarget Batch Size:\t\t{ configuration.PublishBatchSize.ToString("n0") } (events)");
             message.AppendLine($"\tMinimum Message Size:\t\t{ configuration.PublishingBodyMinBytes.ToString("n0") } (bytes)");
-            message.AppendLine($"\tLarge Message Factor:\t\t{ configuration.LargeMessageRandomFactorPercent.ToString("P", CultureInfo.InvariantCulture) }");
+            message.AppendLine($"\tLarge Message Factor:\t\t{ configuration.LargeMessageRandomFactorPercent } %");
             message.AppendLine();
 
             // Publish and read pairing

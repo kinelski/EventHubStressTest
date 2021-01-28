@@ -67,6 +67,7 @@ namespace EventProcessorTest
                             using var batch = await producer.CreateBatchAsync(new CreateBatchOptions { PartitionId = selectedPartition }).ConfigureAwait(false);
 
                             var events = EventGenerator.CreateEvents(
+                                batch.MaximumSizeInBytes,
                                 Configuration.PublishBatchSize,
                                 Configuration.LargeMessageRandomFactorPercent,
                                 Configuration.PublishingBodyMinBytes,

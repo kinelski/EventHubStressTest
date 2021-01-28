@@ -141,7 +141,7 @@ namespace EventProcessorEmptyReadTest
 
             var runDurationMilliseconds = Interlocked.CompareExchange(ref metrics.RunDurationMilliseconds, 0.0, 0.0);
             var currentDuration = TimeSpan.FromMilliseconds(runDurationMilliseconds > 0.0 ? runDurationMilliseconds : 1);
-            var averageMemory =  metrics.TotalMemoryUsed / metrics.MemorySamples;
+            var averageMemory =  metrics.TotalMemoryUsed / (metrics.MemorySamples > 0.0 ? metrics.MemorySamples : 1);
 
             message.AppendLine("Run Metrics");
             message.AppendLine("=========================");

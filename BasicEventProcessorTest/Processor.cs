@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.EventHubs;
@@ -11,6 +12,10 @@ namespace EventProcessorTest
 {
     internal class Processor
     {
+        private string Identifier { get; } = Guid.NewGuid().ToString();
+
+        private int[] PartitionHandlerCalls { get; }
+
         private Metrics Metrics { get; }
 
         private ConcurrentBag<Exception> ErrorsObserved { get; }
@@ -23,15 +28,40 @@ namespace EventProcessorTest
 
         public Processor(TestConfiguration configuration,
                          Metrics metrics,
+                         int partitionCount,
                          ConcurrentBag<Exception> errorsObserved,
-                         Func<ProcessEventArgs, Task> processEventHandler,
+                         Func<string, ProcessEventArgs, Task> processEventHandler,
                          Func<ProcessErrorEventArgs, Task> processErrorHandler)
         {
             Configuration = configuration;
             Metrics = metrics;
+            PartitionHandlerCalls = Enumerable.Range(0, partitionCount).Select(index => 0).ToArray();
             ErrorsObserved = errorsObserved;
-            ProcessEventHandler = processEventHandler;
             ProcessErrorHandler = processErrorHandler;
+
+            ProcessEventHandler = async args =>
+            {
+                try
+                {
+                    var count = Interlocked.Increment(ref PartitionHandlerCalls[int.Parse(args.Partition.PartitionId)]);
+
+                    if (count > 1)
+                    {
+                        if (!args.Data.Properties.TryGetValue(EventGenerator.IdPropertyName, out var duplicateId))
+                        {
+                            duplicateId = "(unknown)";
+                        }
+
+                        ErrorsObserved.Add(new InvalidOperationException($"The handler for processing events was invoked concurrently for processor: `{ Identifier }`,  partition: `{ args.Partition.PartitionId }`, event: `{ duplicateId }`.  Count: `{ count }`"));
+                    }
+
+                    await processEventHandler(Identifier, args);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref PartitionHandlerCalls[int.Parse(args.Partition.PartitionId)]);
+                }
+            };
         }
 
         public async Task Start(CancellationToken cancellationToken)
@@ -40,18 +70,19 @@ namespace EventProcessorTest
             {
                 var options = new EventProcessorClientOptions
                 {
+                    Identifier = Identifier,
+
                     RetryOptions = new EventHubsRetryOptions
                     {
                         TryTimeout = Configuration.ReadTimeout
                     }
                 };
 
-                var storageClient = default(BlobContainerClient);
                 var processor = default(EventProcessorClient);
 
                 try
                 {
-                    storageClient = new BlobContainerClient(Configuration.StorageConnectionString, Configuration.BlobContainer);
+                    var storageClient = new BlobContainerClient(Configuration.StorageConnectionString, Configuration.BlobContainer);
                     processor = new EventProcessorClient(storageClient, EventHubConsumerClient.DefaultConsumerGroupName, Configuration.EventHubsConnectionString, Configuration.EventHub, options);
 
                     processor.ProcessEventAsync += ProcessEventHandler;

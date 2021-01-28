@@ -16,24 +16,32 @@ namespace Azure.Messaging.EventHubs
         public static readonly string PublishTimePropertyName = $"{ nameof(EventGenerator) }::PublishTime";
         public static readonly string PartitionPropertyName = $"{ nameof(EventGenerator) }::Partition";
 
-        public static IEnumerable<EventData> CreateEvents(int numberOfEvents,
+        public static IEnumerable<EventData> CreateEvents(long maximumBatchSize,
+                                                          int numberOfEvents,
                                                           int largeMessageRandomFactor = 30,
                                                           int minimumBodySize = 15,
                                                           int maximumBodySize = 83886,
                                                           long sequenceNumber = 0,
                                                           string publishToPartition = null)
         {
-            for (var index = 0; index < numberOfEvents; ++index)
+            var activeMinimumBodySize = minimumBodySize;
+            var activeMaximumBodySize = maximumBodySize;
+            var totalBytesGenerated = 0;
+
+            if (RandomNumberGenerator.Value.Next(1, 100) < largeMessageRandomFactor)
             {
-                var activeMinimumBodySize = minimumBodySize;
+                activeMinimumBodySize = (int)Math.Ceiling(maximumBodySize * 0.65);
+            }
+            else
+            {
+                activeMaximumBodySize = (int)Math.Floor((maximumBatchSize * 1.0f) / numberOfEvents);
+            }
 
-                if (RandomNumberGenerator.Value.Next(1, 100) < largeMessageRandomFactor)
-                {
-                    activeMinimumBodySize = (int)Math.Ceiling((maximumBodySize * 0.65));
-                }
-
-                var buffer = new byte[RandomNumberGenerator.Value.Next(activeMinimumBodySize, maximumBodySize)];
+            for (var index = 0; ((index < numberOfEvents) && (totalBytesGenerated <= maximumBatchSize)); ++index)
+            {
+                var buffer = new byte[RandomNumberGenerator.Value.Next(activeMinimumBodySize, activeMaximumBodySize)];
                 RandomNumberGenerator.Value.NextBytes(buffer);
+                totalBytesGenerated += buffer.Length;
 
                 yield return CreateEventFromBody(buffer, sequenceNumber++, publishToPartition);
             }

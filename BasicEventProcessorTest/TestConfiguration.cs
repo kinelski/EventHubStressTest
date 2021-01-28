@@ -22,7 +22,7 @@ namespace EventProcessorTest
 
         // Reading
 
-        public int ProcessorCount = 3;
+        public int ProcessorCount = 2;
         public int EventReadLimitMinutes = 60;
         public TimeSpan ReadTimeout = TimeSpan.FromMinutes(1);
     }

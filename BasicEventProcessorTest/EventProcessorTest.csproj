@@ -4,15 +4,19 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <RestoreSources>
-      https://azuresdkartifacts.blob.core.windows.net/azure-sdk-for-net/index.json;
+      https://pkgs.dev.azure.com/azure-sdk/public/_packaging/azure-sdk-for-net/nuget/v3/index.json;
       https://api.nuget.org/v3/index.json;
     </RestoreSources>
   </PropertyGroup>
 
   <!-- Package reference is used by default -->
   <ItemGroup Condition="'$(SdkLocalRoot)' == ''">
-    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.1.0-dev.*"></PackageReference>
-    <PackageReference Include="Azure.Messaging.EventHubs.Processor" Version="5.1.0-dev.*"></PackageReference>
+    <!--PackageReference Include="Azure.Messaging.EventHubs" Version="5.1.0-dev.*"></PackageReference>
+    <PackageReference Include="Azure.Messaging.EventHubs.Processor" Version="5.1.0-dev.*"></PackageReference-->
+
+    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.0.1"></PackageReference>
+    <PackageReference Include="Azure.Messaging.EventHubs.Processor" Version="5.0.1"></PackageReference>
+
     <PackageReference Include="Azure.Storage.Blobs" Version="12.1.*"></PackageReference>
   </ItemGroup>
 

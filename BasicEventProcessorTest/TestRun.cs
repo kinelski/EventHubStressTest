@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.EventHubs;
 using Azure.Messaging.EventHubs.Processor;
+using Azure.Messaging.EventHubs.Producer;
 using Azure.Messaging.EventHubs.Tests;
 
 namespace EventProcessorTest
@@ -51,6 +52,15 @@ namespace EventProcessorTest
 
             try
             {
+                // Determine the number of partitions in the Event Hub.
+
+                int partitionCount;
+
+                await using (var producerClient = new EventHubProducerClient(Configuration.EventHubsConnectionString, Configuration.EventHub))
+                {
+                    partitionCount = (await producerClient.GetEventHubPropertiesAsync()).PartitionIds.Length;
+                }
+
                 // Begin publishing events in the background.
 
                 publishingTask = Task.Run(() => new Publisher(Configuration, Metrics, PublishedEvents, ErrorsObserved).Start(publishCancellationSource.Token));
@@ -59,7 +69,7 @@ namespace EventProcessorTest
 
                 processorTasks = Enumerable
                     .Range(0, Configuration.ProcessorCount)
-                    .Select(_ => Task.Run(() => new Processor(Configuration, Metrics, ErrorsObserved, ProcessEventHandler, ProcessErrorHandler).Start(processorCancellationSource.Token)))
+                    .Select(_ => Task.Run(() => new Processor(Configuration, Metrics, partitionCount, ErrorsObserved, ProcessEventHandler, ProcessErrorHandler).Start(processorCancellationSource.Token)))
                     .ToList();
 
                 // Test for missing events and update metrics.
@@ -135,7 +145,7 @@ namespace EventProcessorTest
             }
         }
 
-        private async Task ProcessEventHandler(ProcessEventArgs args)
+        private async Task ProcessEventHandler(string processorId, ProcessEventArgs args)
         {
             try
             {

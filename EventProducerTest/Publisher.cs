@@ -137,6 +137,7 @@ namespace EventProducerTest
             var batchEvents = new List<EventData>();
 
             var events = EventGenerator.CreateEvents(
+                batch.MaximumSizeInBytes,
                 Configuration.PublishBatchSize,
                 Configuration.LargeMessageRandomFactorPercent,
                 Configuration.PublishingBodyMinBytes,

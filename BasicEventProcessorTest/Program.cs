@@ -141,7 +141,7 @@ namespace EventProcessorTest
 
             var runDurationMilliseconds = Interlocked.CompareExchange(ref metrics.RunDurationMilliseconds, 0.0, 0.0);
             var currentDuration = TimeSpan.FromMilliseconds(runDurationMilliseconds > 0.0 ? runDurationMilliseconds : 1);
-            var averageMemory =  metrics.TotalMemoryUsed / metrics.MemorySamples;
+            var averageMemory =  metrics.TotalMemoryUsed / (metrics.MemorySamples > 0.0 ? metrics.MemorySamples : 1);
 
             message.AppendLine("Run Metrics");
             message.AppendLine("=========================");
@@ -257,13 +257,15 @@ namespace EventProcessorTest
         private static async Task ReportErrorsAsync(TextWriter writer,
                                                     ConcurrentBag<Exception> exceptions)
         {
+            var nowStamp = $"[{ DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss:tt") }] ";
+
             Exception currentException;
 
             while (exceptions.TryTake(out currentException))
             {
                 await writer.WriteLineAsync
                 (
-                    $"[ { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
+                    $"[{ nowStamp }][ { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
                 );
             }
 
@@ -274,11 +276,13 @@ namespace EventProcessorTest
         {
             void processLogEvent(EventWrittenEventArgs args, string message)
             {
+                var nowStamp = $"[{ DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss:tt") }] ";
+
                 try
                 {
                     writer.WriteLine
                     (
-                        $"[ { args.EventSource } :: { args.EventName } ]{Environment.NewLine}{ message ?? "No message available" }{ Environment.NewLine }{ "No stack trace available" }{ Environment.NewLine }"
+                        $"[{ nowStamp }][ { args.EventSource } :: { args.EventName } ]{Environment.NewLine}{ message ?? "No message available" }{ Environment.NewLine }{ "No stack trace available" }{ Environment.NewLine }"
                     );
                 }
                 catch
