@@ -12,7 +12,7 @@ namespace EventProcessorTest
 {
     internal class Processor
     {
-        private string Identifier { get; } = Guid.NewGuid().ToString();
+        private string Identifier { get; } = Convert.ToBase64String(Guid.NewGuid().ToByteArray()).TrimEnd('=').ToUpperInvariant();
 
         private int[] PartitionHandlerCalls { get; }
 
@@ -41,25 +41,31 @@ namespace EventProcessorTest
 
             ProcessEventHandler = async args =>
             {
+                var partitionIndex = int.Parse(args.Partition.PartitionId);
+
                 try
                 {
-                    var count = Interlocked.Increment(ref PartitionHandlerCalls[int.Parse(args.Partition.PartitionId)]);
+                    // There should only be one active call for a given partition; track any concurrent calls for this partition
+                    // and report them as an error.
 
-                    if (count > 1)
+                    var activeCalls = Interlocked.Increment(ref PartitionHandlerCalls[partitionIndex]);
+
+                    if (activeCalls > 1)
                     {
                         if (!args.Data.Properties.TryGetValue(EventGenerator.IdPropertyName, out var duplicateId))
                         {
                             duplicateId = "(unknown)";
                         }
 
-                        ErrorsObserved.Add(new InvalidOperationException($"The handler for processing events was invoked concurrently for processor: `{ Identifier }`,  partition: `{ args.Partition.PartitionId }`, event: `{ duplicateId }`.  Count: `{ count }`"));
+                        ErrorsObserved.Add(new InvalidOperationException($"The handler for processing events was invoked concurrently for processor: `{ Identifier }`,  partition: `{ args.Partition.PartitionId }`, event: `{ duplicateId }`.  Count: `{ activeCalls }`"));
                     }
 
-                    await processEventHandler(Identifier, args);
+                    await processEventHandler(Identifier, args).ConfigureAwait(false);
                 }
                 finally
                 {
-                    Interlocked.Decrement(ref PartitionHandlerCalls[int.Parse(args.Partition.PartitionId)]);
+                    metrics.EventHandlerCalls.AddOrUpdate(Identifier, 1, (id, count) => count + 1);
+                    Interlocked.Decrement(ref PartitionHandlerCalls[partitionIndex]);
                 }
             };
         }
@@ -71,6 +77,7 @@ namespace EventProcessorTest
                 var options = new EventProcessorClientOptions
                 {
                     Identifier = Identifier,
+                    LoadBalancingStrategy = LoadBalancingStrategy.Greedy,
 
                     RetryOptions = new EventHubsRetryOptions
                     {
@@ -117,7 +124,7 @@ namespace EventProcessorTest
                     // Constrain stopping the processor, just in case it has issues.  It should not be allowed
                     // to hang, it should be abandoned so that processing can restart.
 
-                    using var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    using var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(25));
 
                     try
                     {

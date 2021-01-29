@@ -108,6 +108,8 @@ namespace EventProcessorTest
 
             try
             {
+                var publishingStopped = DateTimeOffset.UtcNow;
+
                 publishCancellationSource.Cancel();
                 await publishingTask.ConfigureAwait(false);
 
@@ -124,6 +126,8 @@ namespace EventProcessorTest
                 // the last bit of bookkeeping, scanning for missing and unexpected events.
 
                 await Task.Delay(TimeSpan.FromMinutes(2)).ConfigureAwait(false);
+
+                ScrubRecentlyPublishedEvents(PublishedEvents, UnexpectedEvents, publishingStopped);
                 ScanForUnreadEvents(PublishedEvents, UnexpectedEvents, ReadEvents, ErrorsObserved, TimeSpan.FromMinutes(Configuration.EventReadLimitMinutes), Metrics);
 
                 foreach (var unexpectedEvent in UnexpectedEvents.Values)
@@ -331,24 +335,35 @@ namespace EventProcessorTest
 
             var now = DateTimeOffset.UtcNow;
 
-            foreach (var publishedEvent in publishedEvents.ToList())
+            foreach (var publishedEventId in publishedEvents.Select(item => item.Key).ToList())
             {
-                if ((publishedEvent.Value.Properties.TryGetValue(EventGenerator.PublishTimePropertyName, out publishDate))
+                // If the event is no longer in the set, then it was processed since the copy
+                // of the keys were made.
+
+                if (!publishedEvents.TryGetValue(publishedEventId, out var publishedEvent))
+                {
+                    continue;
+                }
+
+                // If the event was expected earlier, it may have already been read and tracked as
+                // unexpected.
+
+                if ((publishedEvent.Properties.TryGetValue(EventGenerator.PublishTimePropertyName, out publishDate))
                     && (((DateTimeOffset)publishDate).Add(eventDueInterval) < now)
-                    && (publishedEvents.TryRemove(publishedEvent.Key, out _)))
+                    && (publishedEvents.TryRemove(publishedEventId, out _)))
                 {
                     // Check to see if the event was read and tracked as unexpected.  If so, perform basic validation
                     // and record it.
 
-                    if (unexpectedEvents.TryRemove(publishedEvent.Key, out var readEvent))
+                    if (unexpectedEvents.TryRemove(publishedEventId, out var readEvent))
                     {
                         Interlocked.Increment(ref metrics.EventsRead);
 
                          // Validate the event against expectations.
 
-                        if (!readEvent.IsEquivalentTo(publishedEvent.Value))
+                        if (!readEvent.IsEquivalentTo(publishedEvent))
                         {
-                            if (!readEvent.Body.ToArray().SequenceEqual(publishedEvent.Value.Body.ToArray()))
+                            if (!readEvent.Body.ToArray().SequenceEqual(publishedEvent.Body.ToArray()))
                             {
                                 Interlocked.Increment(ref metrics.InvalidBodies);
                             }
@@ -358,7 +373,7 @@ namespace EventProcessorTest
                             }
                         }
 
-                        if ((!publishedEvent.Value.Properties.TryGetValue(EventGenerator.PartitionPropertyName, out var publishedPartition))
+                        if ((!publishedEvent.Properties.TryGetValue(EventGenerator.PartitionPropertyName, out var publishedPartition))
                             ||(!readEvent.Properties.TryGetValue(EventGenerator.PartitionPropertyName, out var readPartition))
                             || (readPartition.ToString() != publishedPartition.ToString()))
                         {
@@ -366,15 +381,62 @@ namespace EventProcessorTest
                         }
 
                         Interlocked.Increment(ref metrics.EventsProcessed);
-                        readEvents.TryAdd(publishedEvent.Key, 0);
+                        readEvents.TryAdd(publishedEventId, 0);
                     }
-                    else if (!readEvents.ContainsKey(publishedEvent.Key))
+                    else if (!readEvents.ContainsKey(publishedEventId))
                     {
                         // The event wasn't read earlier and tracked as unexpected; it has not been seen.  Track it as missing.
 
                         Interlocked.Increment(ref metrics.EventsNotReceived);
-                        errorsObserved.Add(new EventHubsException(false, string.Empty, FormatMissingEvent(publishedEvent.Value, now), EventHubsException.FailureReason.GeneralError));
+                        errorsObserved.Add(new EventHubsException(false, string.Empty, FormatMissingEvent(publishedEvent, now), EventHubsException.FailureReason.GeneralError));
                     }
+                }
+            }
+        }
+
+        private static void ScrubRecentlyPublishedEvents(ConcurrentDictionary<string, EventData> publishedEvents,
+                                                         ConcurrentDictionary<string, EventData> unexpectedEvents,
+                                                         ConcurrentDictionary<string, byte> readEvents,
+                                                         DateTimeOffset scrubMoreRecentThan)
+        {
+            // An event is considered missing if it was published longer ago than the due time and
+            // still exists in the set of published events.
+
+            object publishDate;
+
+            foreach (var publishedEventId in publishedEvents.Select(item => item.Key).ToList())
+            {
+                // If the event is no longer in the set, then it was processed since the copy
+                // of the keys were made.
+
+                if (!publishedEvents.TryGetValue(publishedEventId, out var publishedEvent))
+                {
+                    continue;
+                }
+
+                if ((publishedEvent.Properties.TryGetValue(EventGenerator.PublishTimePropertyName, out publishDate))
+                    && (((DateTimeOffset)publishDate) >= scrubMoreRecentThan)
+                    && (!readEvents.ContainsKey(publishedEventId)))
+                {
+                    publishedEvents.TryRemove(publishedEventId, out _);
+                }
+            }
+
+            foreach (var unexpectedEventId in unexpectedEvents.Select(item => item.Key).ToList())
+            {
+                // If the event is no longer in the set, then it was processed since the copy
+                // of the keys were made.
+
+                if (!unexpectedEvents.TryGetValue(unexpectedEventId, out var unexpectedEvent))
+                {
+                    continue;
+                }
+
+                if ((unexpectedEvent.Properties.TryGetValue(EventGenerator.PublishTimePropertyName, out publishDate))
+                    && (((DateTimeOffset)publishDate) >= scrubMoreRecentThan))
+                {
+                    unexpectedEvents.TryRemove(unexpectedEventId, out _);
+                    readEvents.TryRemove(unexpectedEventId, out _);
                 }
             }
         }

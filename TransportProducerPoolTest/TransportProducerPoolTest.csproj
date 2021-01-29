@@ -8,6 +8,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Azure.Messaging.EventHubs" Version="5.1.0"></PackageReference>
+      <PackageReference Include="Azure.Messaging.EventHubs" Version="5.2.0"></PackageReference>
     </ItemGroup>
 </Project>

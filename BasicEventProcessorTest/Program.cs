@@ -52,26 +52,27 @@ namespace EventProcessorTest
 
             try
             {
-                var message = $"{ Environment.NewLine }{ Environment.NewLine }=============================={ Environment.NewLine }  Run Starting{ Environment.NewLine }=============================={ Environment.NewLine }";
+                var message = $"{ Environment.NewLine }{ Environment.NewLine }======================================={ Environment.NewLine }[ { DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") } ] Run Starting{ Environment.NewLine }======================================={ Environment.NewLine }";
                 metricsWriter.WriteLine(message);
                 errorWriter.WriteLine(message);
 
                 cancellationSource.CancelAfter(runDuration);
 
-                var testRun = new TestRun(new TestConfiguration
+                var testConfiguration = new TestConfiguration
                 {
                     EventHubsConnectionString = runArgs.EventHubsConnectionString,
                     EventHub = runArgs.EventHub,
                     StorageConnectionString = runArgs.StorageConnectionString,
                     BlobContainer = runArgs.BlobContainer
-                });
+                };
 
+                var testRun = new TestRun(testConfiguration);
                 var testRunTask = testRun.Start(cancellationSource.Token);
 
                 // Make an initial metrics report now that the run is taking place.
 
                 await (Task.Delay(TimeSpan.FromSeconds(1)));
-                await ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration);
+                await ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration, testConfiguration.ProcessorCount);
 
                 // Allow the run to take place, periodically reporting.
 
@@ -83,14 +84,14 @@ namespace EventProcessorTest
                     }
                     catch (TaskCanceledException)
                     {
-                        message = $"{ Environment.NewLine }{ Environment.NewLine }------------------------------------------------------------{ Environment.NewLine }  The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }------------------------------------------------------------";
+                        message = $"{ Environment.NewLine }{ Environment.NewLine }----------------------------------------------------------------------------------{ Environment.NewLine }[ { DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") } ] The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }----------------------------------------------------------------------------------{ Environment.NewLine }";
                         metricsWriter.WriteLine(message);
                         errorWriter.WriteLine(message);
                     }
 
                     await Task.WhenAll
                     (
-                        ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration),
+                        ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration, testConfiguration.ProcessorCount),
                         ReportErrorsAsync(errorWriter, testRun.ErrorsObserved)
                     );
                 }
@@ -103,11 +104,11 @@ namespace EventProcessorTest
 
                 await Task.WhenAll
                 (
-                    ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration),
+                    ReportMetricsAsync(metricsWriter, testRun.Metrics, runDuration, testConfiguration.ProcessorCount),
                     ReportErrorsAsync(errorWriter, testRun.ErrorsObserved)
                 );
 
-                message = $"{ Environment.NewLine }{ Environment.NewLine }=============================={ Environment.NewLine }  Run Complete{ Environment.NewLine }==============================";
+                message = $"{ Environment.NewLine }{ Environment.NewLine }=========================================={ Environment.NewLine }[ { DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") } ] Run Complete{ Environment.NewLine }==========================================";
                 metricsWriter.WriteLine(message);
                 errorWriter.WriteLine(message);
             }
@@ -132,7 +133,8 @@ namespace EventProcessorTest
 
         private static Task ReportMetricsAsync(TextWriter writer,
                                                Metrics metrics,
-                                               TimeSpan runDuration)
+                                               TimeSpan runDuration,
+                                               int processorCount)
         {
             var message = new StringBuilder();
             var metric = default(long);
@@ -178,6 +180,24 @@ namespace EventProcessorTest
             message.AppendLine($"\tEvents Processed:\t\t{ read.ToString("n0") } ({ (metric / published).ToString("P", CultureInfo.InvariantCulture) })");
 
             message.AppendLine();
+
+            // The distribution of event handler dispatches across processors
+
+            if (processorCount > 1)
+            {
+                message.AppendLine($"Event Handler Invocations (by processor)");
+                message.AppendLine("========================================");
+
+                foreach (var processorId in metrics.EventHandlerCalls.Keys.ToList())
+                {
+                    if (metrics.EventHandlerCalls.TryGetValue(processorId, out var handlerCalls))
+                    {
+                        message.AppendLine($"\t{ processorId }:\t\t{ handlerCalls.ToString("n0") } ({ (handlerCalls / published).ToString("P", CultureInfo.InvariantCulture) })");
+                    }
+                }
+
+                message.AppendLine();
+            }
 
             // Validation issues
 
@@ -257,7 +277,7 @@ namespace EventProcessorTest
         private static async Task ReportErrorsAsync(TextWriter writer,
                                                     ConcurrentBag<Exception> exceptions)
         {
-            var nowStamp = $"[{ DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss:tt") }] ";
+            var nowStamp = $"{ DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") }";
 
             Exception currentException;
 
@@ -265,7 +285,7 @@ namespace EventProcessorTest
             {
                 await writer.WriteLineAsync
                 (
-                    $"[{ nowStamp }][ { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
+                    $"[ { nowStamp } | { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
                 );
             }
 

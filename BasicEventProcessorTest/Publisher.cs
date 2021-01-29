@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.EventHubs;
@@ -96,7 +95,7 @@ namespace EventProcessorTest
                                     foreach (var batchEvent in batchEvents)
                                     {
                                         batchEvent.Properties.TryGetValue(EventGenerator.IdPropertyName, out var id);
-                                        PublishedEvents.AddOrUpdate(id.ToString(), _ => batchEvent, (k, v) => batchEvent);
+                                        PublishedEvents[id.ToString()] = batchEvent;
                                     }
 
                                     Interlocked.Add(ref Metrics.EventsPublished, batch.Count);

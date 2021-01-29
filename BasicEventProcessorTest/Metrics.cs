@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 
@@ -23,6 +24,7 @@ namespace EventProcessorTest
         public long EventsRead = 0;
         public long EventsProcessed = 0;
         public double RunDurationMilliseconds = 0;
+        public ConcurrentDictionary<string, int> EventHandlerCalls = new ConcurrentDictionary<string, int>();
 
         // Event validation issues
         public long InvalidBodies = 0;

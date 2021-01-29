@@ -117,7 +117,7 @@ namespace EventProcessorEmptyReadTest
                     // Constrain stopping the processor, just in case it has issues.  It should not be allowed
                     // to hang, it should be abandoned so that processing can restart.
 
-                    using var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    using var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(25));
 
                     try
                     {
