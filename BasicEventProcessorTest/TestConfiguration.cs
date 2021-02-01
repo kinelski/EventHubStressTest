@@ -13,7 +13,7 @@ namespace EventProcessorTest
 
         // Publishing
 
-        public int PublishBatchSize = 50;
+        public int PublishBatchSize = 100;
         public int PublishingBodyMinBytes = 10;
         public int PublishingBodyRegularMaxBytes = 757760;
         public int LargeMessageRandomFactorPercent = 30;
@@ -22,7 +22,7 @@ namespace EventProcessorTest
 
         // Reading
 
-        public int ProcessorCount = 2;
+        public int ProcessorCount = 3;
         public int EventReadLimitMinutes = 60;
         public TimeSpan ReadTimeout = TimeSpan.FromMinutes(1);
     }

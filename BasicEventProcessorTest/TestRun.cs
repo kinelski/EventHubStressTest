@@ -127,7 +127,7 @@ namespace EventProcessorTest
 
                 await Task.Delay(TimeSpan.FromMinutes(2)).ConfigureAwait(false);
 
-                ScrubRecentlyPublishedEvents(PublishedEvents, UnexpectedEvents, publishingStopped);
+                ScrubRecentlyPublishedEvents(PublishedEvents, UnexpectedEvents, ReadEvents, publishingStopped.Subtract(TimeSpan.FromMinutes(1)));
                 ScanForUnreadEvents(PublishedEvents, UnexpectedEvents, ReadEvents, ErrorsObserved, TimeSpan.FromMinutes(Configuration.EventReadLimitMinutes), Metrics);
 
                 foreach (var unexpectedEvent in UnexpectedEvents.Values)
@@ -399,9 +399,6 @@ namespace EventProcessorTest
                                                          ConcurrentDictionary<string, byte> readEvents,
                                                          DateTimeOffset scrubMoreRecentThan)
         {
-            // An event is considered missing if it was published longer ago than the due time and
-            // still exists in the set of published events.
-
             object publishDate;
 
             foreach (var publishedEventId in publishedEvents.Select(item => item.Key).ToList())
@@ -415,10 +412,10 @@ namespace EventProcessorTest
                 }
 
                 if ((publishedEvent.Properties.TryGetValue(EventGenerator.PublishTimePropertyName, out publishDate))
-                    && (((DateTimeOffset)publishDate) >= scrubMoreRecentThan)
-                    && (!readEvents.ContainsKey(publishedEventId)))
+                    && (((DateTimeOffset)publishDate) >= scrubMoreRecentThan))
                 {
                     publishedEvents.TryRemove(publishedEventId, out _);
+                    readEvents.TryRemove(publishedEventId, out _);
                 }
             }
 

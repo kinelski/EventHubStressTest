@@ -52,7 +52,7 @@ namespace EventProcessorTest
 
             try
             {
-                var message = $"{ Environment.NewLine }{ Environment.NewLine }======================================={ Environment.NewLine }[ { DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") } ] Run Starting{ Environment.NewLine }======================================={ Environment.NewLine }";
+                var message = $"{ Environment.NewLine }{ Environment.NewLine }=========================================={ Environment.NewLine }[ { DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") } ] :: Run Starting{ Environment.NewLine }=========================================={ Environment.NewLine }";
                 metricsWriter.WriteLine(message);
                 errorWriter.WriteLine(message);
 
@@ -84,7 +84,7 @@ namespace EventProcessorTest
                     }
                     catch (TaskCanceledException)
                     {
-                        message = $"{ Environment.NewLine }{ Environment.NewLine }----------------------------------------------------------------------------------{ Environment.NewLine }[ { DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") } ] The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }----------------------------------------------------------------------------------{ Environment.NewLine }";
+                        message = $"{ Environment.NewLine }{ Environment.NewLine }-----------------------------------------------------------------------------------------------{ Environment.NewLine }[ { DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") } ] :: The run is ending.  Waiting for clean-up and final reporting...{ Environment.NewLine }-----------------------------------------------------------------------------------------------{ Environment.NewLine }";
                         metricsWriter.WriteLine(message);
                         errorWriter.WriteLine(message);
                     }
@@ -277,7 +277,7 @@ namespace EventProcessorTest
         private static async Task ReportErrorsAsync(TextWriter writer,
                                                     ConcurrentBag<Exception> exceptions)
         {
-            var nowStamp = $"{ DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt") }";
+            var nowStamp = DateTime.Now.ToString("MM/dd/yyyy hh:mm:ss tt");
 
             Exception currentException;
 
@@ -285,7 +285,7 @@ namespace EventProcessorTest
             {
                 await writer.WriteLineAsync
                 (
-                    $"[ { nowStamp } | { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
+                    $"[ { nowStamp } :: { currentException.GetType().Name } ]{Environment.NewLine}{ currentException.Message ?? "No message available" }{ Environment.NewLine }{ currentException.StackTrace ?? "No stack trace available" }{ Environment.NewLine }"
                 );
             }
 
